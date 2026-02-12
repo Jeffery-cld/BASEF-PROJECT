@@ -1,0 +1,1539 @@
+#BASEF Software Section
+
+import time
+import threading
+import numpy as np
+import tkinter as tk
+from tkinter import messagebox
+import math
+import cv2
+from PIL import Image, ImageTk
+
+import torch
+import open_clip
+from PIL.ImageChops import screen
+
+try:
+    import serial
+    SERIAL_OK = True
+except Exception:
+    SERIAL_OK = False
+
+#Settings
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+#Nutrition database
+#Everything in per 100g
+# Food Nutrition Dataset organized by categories
+# Junk Foods
+junk_foods = {
+    "pancakes": dict(carbs=35.32, sugar=7.05, fat=12.07, sat_fat=3.1, fiber=2.1, protein=7.41, calories=282, sodium=508, potassium=174, magnesium=20, water=42.43, glycemic_index=68, caffeine=0),
+    "pizza": dict(carbs=23.5, sugar=2.27, fat=9.09, sat_fat=4.1, fiber=0.8, protein=6.82, calories=220, sodium=402, potassium=0, magnesium=0, water=0, glycemic_index=60, caffeine=0),
+    "tacos": dict(carbs=15.1, sugar=0, fat=9.17, sat_fat=3.3, fiber=3, protein=6.69, calories=170, sodium=363, potassium=229, magnesium=27, water=67.3, glycemic_index=60, caffeine=0),
+    "french_fries": dict(carbs=22.6, sugar=1.19, fat=8.33, sat_fat=1.3, fiber=2.4, protein=2.38, calories=179, sodium=48, potassium=0, magnesium=0, water=0, glycemic_index=75, caffeine=0),
+    "hot_dog": dict(carbs=3, sugar=0, fat=25, sat_fat=9.0, fiber=0, protein=34, calories=370, sodium=1137, potassium=0, magnesium=0, water=0, glycemic_index=70, caffeine=0),
+    "hamburger": dict(carbs=20.38, sugar=1.53, fat=16.06, sat_fat=6.2, fiber=1.4, protein=16.86, calories=299, sodium=440, potassium=230, magnesium=20, water=44.71, glycemic_index=44, caffeine=0),
+    "noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=67, caffeine=0),
+    "spaghetti": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=50, caffeine=0),
+    "instant_noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=49, caffeine=0)
+}
+
+# Meats
+meats = {
+    "steak": dict(carbs=7.14, sugar=3.57, fat=3.57, sat_fat=1.4, fiber=0, protein=42.9, calories=214, sodium=9821, potassium=0, magnesium=0, water=0, glycemic_index=52, caffeine=0),
+    "braised_pork": dict(carbs=0, sugar=0, fat=9.51, sat_fat=3.3, fiber=0, protein=12.1, calories=138, sodium=91, potassium=195, magnesium=12, water=75.9, glycemic_index=76, caffeine=0),
+    "braised_duck": dict(carbs=0, sugar=0, fat=39.3, sat_fat=13.8, fiber=0, protein=11.5, calories=404, sodium=63, potassium=209, magnesium=15, water=48.5, glycemic_index=60, caffeine=0),
+    "grilled_salmon": dict(carbs=0.86, sugar=0, fat=3.45, sat_fat=0.7, fiber=0, protein=18.1, calories=103, sodium=190, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "fried_chicken": dict(carbs=9.52, sugar=1.19, fat=17.9, sat_fat=4.5, fiber=0, protein=13.1, calories=326, sodium=726, potassium=119, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "chicken_curry": dict(carbs=6.54, sugar=2.56, fat=6.48, sat_fat=2.1, fiber=1.4, protein=6.48, calories=107, sodium=376, potassium=280, magnesium=18, water=79, glycemic_index=0, caffeine=0),
+    "sashimi": dict(carbs=4.08, sugar=0, fat=0.34, sat_fat=0.08, fiber=0, protein=19.7, calories=102, sodium=252, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "sushi": dict(carbs=18.39, sugar=2.13, fat=0.67, sat_fat=0.18, fiber=1, protein=2.92, calories=94, sodium=428, potassium=48, magnesium=13, water=76.37, glycemic_index=50, caffeine=0),
+    "bacon": dict(carbs=1.4, sugar=0, fat=34.4, sat_fat=11.9, fiber=0, protein=31.3, calories=449, sodium=1500, potassium=412, magnesium=27, water=26.2, glycemic_index=0, caffeine=0)
+}
+
+# Fruits
+fruits = {
+    "banana": dict(carbs=22.71, sugar=15.8, fat=0.28, sat_fat=0.1, fiber=1.7, protein=0.74, calories=97, sodium=0, potassium=326, magnesium=28, water=75.6, glycemic_index=0, caffeine=0),
+    "apple": dict(carbs=14.8, sugar=12.08, fat=0.15, sat_fat=0.03, fiber=2.1, protein=0.17, calories=61, sodium=0, potassium=104, magnesium=5, water=84.62, glycemic_index=54, caffeine=0),
+    "pineapple": dict(carbs=14.09, sugar=11.42, fat=0.21, sat_fat=0.02, fiber=0.9, protein=0.46, calories=60, sodium=0, potassium=137, magnesium=13, water=84.99, glycemic_index=59, caffeine=0),
+    "pears": dict(carbs=15.18, sugar=9.73, fat=0.15, sat_fat=0.03, fiber=3.1, protein=0.37, calories=59, sodium=3, potassium=104, magnesium=7, water=84.02, glycemic_index=38, caffeine=0),
+    "grape": dict(carbs=19.4, sugar=16.74, fat=0.2, sat_fat=0.05, fiber=0.9, protein=0.9, calories=83, sodium=5, potassium=224, magnesium=8, water=79.04, glycemic_index=53, caffeine=0),
+    "orange": dict(carbs=11.78, sugar=8.96, fat=0.14, sat_fat=0.02, fiber=2.2, protein=0.92, calories=50, sodium=4, potassium=174, magnesium=10, water=86.72, glycemic_index=0, caffeine=0),
+    "watermelon": dict(carbs=7.55, sugar=6.2, fat=0.15, sat_fat=0.02, fiber=0.4, protein=0.61, calories=30, sodium=1, potassium=112, magnesium=10, water=91.45, glycemic_index=72, caffeine=0),
+    "strawberry": dict(carbs=7.96, sugar=4.86, fat=0.22, sat_fat=0.02, fiber=1.8, protein=0.64, calories=36, sodium=0, potassium=161, magnesium=13, water=90.83, glycemic_index=40, caffeine=0),
+    "lemon": dict(carbs=9.32, sugar=2.5, fat=0.3, sat_fat=0.04, fiber=2.8, protein=1.1, calories=29, sodium=2, potassium=138, magnesium=8, water=88.98, glycemic_index=20, caffeine=0),
+    "papaya": dict(carbs=10.8, sugar=7.82, fat=0.26, sat_fat=0.06, fiber=1.7, protein=0.47, calories=43, sodium=8, potassium=182, magnesium=21, water=88.1, glycemic_index=59, caffeine=0)
+}
+
+# Vegetables
+vegetables = {
+    "salad": dict(carbs=17.8, sugar=11.3, fat=3.03, sat_fat=0.6, fiber=1.71, protein=1.73, calories=99.3, sodium=117, potassium=0, magnesium=0, water=0, glycemic_index=74, caffeine=0),
+    "vegetable_soup": dict(carbs=9.17, sugar=3.75, fat=0.21, sat_fat=0.04, fiber=1.2, protein=1.67, calories=46, sodium=333, potassium=138, magnesium=0, water=0, glycemic_index=25, caffeine=0),
+    "corn": dict(carbs=18.7, sugar=6.26, fat=1.35, sat_fat=0.2, fiber=2, protein=3.27, calories=86, sodium=15, potassium=270, magnesium=37, water=76.05, glycemic_index=60, caffeine=0),
+    "broccoli": dict(carbs=6.27, sugar=1.4, fat=0.34, sat_fat=0.04, fiber=2.4, protein=2.57, calories=39, sodium=36, potassium=303, magnesium=21, water=90, glycemic_index=15, caffeine=0),
+    "tomato": dict(carbs=4.04, sugar=2.63, fat=0.31, sat_fat=0.04, fiber=1.2, protein=0.82, calories=20, sodium=4, potassium=226, magnesium=10, water=94.38, glycemic_index=48, caffeine=0),
+    "potato": dict(carbs=12.4, sugar=0, fat=0.1, sat_fat=0.03, fiber=2.5, protein=2.57, calories=58, sodium=10, potassium=413, magnesium=23, water=83.3, glycemic_index=54, caffeine=0),
+    "cabbage": dict(carbs=5.8, sugar=3.2, fat=0.1, sat_fat=0.02, fiber=2.5, protein=1.28, calories=25, sodium=18, potassium=170, magnesium=12, water=92.2, glycemic_index=13, caffeine=0),
+    "onions": dict(carbs=8.46, sugar=5.8, fat=0.08, sat_fat=0.02, fiber=1.7, protein=0.86, calories=38, sodium=1, potassium=171, magnesium=9, water=90.31, glycemic_index=15, caffeine=0),
+    "lettuce": dict(carbs=3.69, sugar=1.1, fat=0.1, sat_fat=0.02, fiber=1.3, protein=0.92, calories=20, sodium=23, potassium=249, magnesium=11, water=94.71, glycemic_index=92, caffeine=0),
+    "cucumbers": dict(carbs=3.8, sugar=1.69, fat=0, sat_fat=0, fiber=0.4, protein=0.84, calories=15, sodium=2, potassium=148, magnesium=0, water=0, glycemic_index=13, caffeine=0)
+}
+
+# Dessert
+dessert = {
+    "ice_cream": dict(carbs=24.6, sugar=21.5, fat=10.8, sat_fat=6.8, fiber=0, protein=3.08, calories=200, sodium=54, potassium=185, magnesium=0, water=0, glycemic_index=13, caffeine=0),
+    "cheesecake": dict(carbs=35.2, sugar=19.6, fat=20.4, sat_fat=12.4, fiber=1.6, protein=4.7, calories=337, sodium=196, potassium=96, magnesium=0, water=0, glycemic_index=10, caffeine=0),
+    "donuts": dict(carbs=61.4, sugar=42.1, fat=17.5, sat_fat=8.9, fiber=1.8, protein=3.51, calories=404, sodium=351, potassium=0, magnesium=0, water=0, glycemic_index=15, caffeine=0),
+    "pudding": dict(carbs=21, sugar=20, fat=0, sat_fat=0, fiber=0, protein=0, calories=86, sodium=10, potassium=0, magnesium=0, water=0, glycemic_index=61, caffeine=0),
+    "apple_pie": dict(carbs=54, sugar=27.4, fat=15, sat_fat=6.9, fiber=1.8, protein=1.77, calories=354, sodium=150, potassium=0, magnesium=0, water=0, glycemic_index=58, caffeine=0),
+    "croissant": dict(carbs=45.8, sugar=11.26, fat=21, sat_fat=11.0, fiber=2.6, protein=8.2, calories=406, sodium=300, potassium=118, magnesium=16, water=23.2, glycemic_index=76, caffeine=0),
+    "toast": dict(carbs=76.6, sugar=0.94, fat=3.2, sat_fat=0.7, fiber=6.3, protein=12.1, calories=390, sodium=598, potassium=202, magnesium=59, water=5.1, glycemic_index=65, caffeine=0),
+    "waffles": dict(carbs=69.43, sugar=8.16, fat=14.29, sat_fat=3.1, fiber=2, protein=4.09, calories=429, sodium=714, potassium=0, magnesium=0, water=0, glycemic_index=63, caffeine=0)
+}
+
+# Caffeine
+caffeine = {
+    "tiramisu": dict(carbs=29.44, sugar=18.7, fat=23.86, sat_fat=13.5, fiber=0.6, protein=5.65, calories=353, sodium=173, potassium=150, magnesium=16, water=39.98, glycemic_index=67, caffeine=34),
+    "chocolate_cake": dict(carbs=57.6, sugar=43.9, fat=22.7, sat_fat=10.5, fiber=1.5, protein=3.03, calories=439, sodium=348, potassium=0, magnesium=0, water=0, glycemic_index=73, caffeine=6),
+    "coffee": dict(carbs=0.32, sugar=0, fat=0, sat_fat=0, fiber=0, protein=0, calories=1, sodium=0, potassium=0, magnesium=0, water=0, glycemic_index=76, caffeine=40)
+}
+
+# Staple Food
+staple_food = {
+    "fried_rice": dict(carbs=31.7, sugar=0.83, fat=5, sat_fat=1.1, fiber=1.7, protein=3.33, calories=183, sodium=500, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "dumplings": dict(carbs=23.7, sugar=1.32, fat=1.97, sat_fat=0.5, fiber=1.3, protein=9.21, calories=145, sodium=342, potassium=0, magnesium=0, water=0, glycemic_index=70, caffeine=0),
+    "white_rice": dict(carbs=20.97, sugar=0.05, fat=0.19, sat_fat=0.05, fiber=1, protein=2.01, calories=96, sodium=227, potassium=10, magnesium=5, water=76.19, glycemic_index=60, caffeine=0),
+}
+
+# All categories combined (for easy access)
+all_foods = {
+    "junk_foods": junk_foods,
+    "meats": meats,
+    "fruits": fruits,
+    "vegetables": vegetables,
+    "dessert": dessert,
+    "caffeine": caffeine,
+    "staple_food": staple_food,
+}
+
+# Categories for the GUI dropdown
+CATEGORIES = sorted(list(all_foods.keys()))
+# FOODS must be a FLAT list of actual food keys for CLIP + popups
+FOODS = sorted({food for cat in all_foods.values() for food in cat.keys()})
+CATEGORY_LABELS = {
+    "junk_foods": "Junk Foods",
+    "meats": "Meats",
+    "fruits": "Fruits",
+    "vegetables": "Vegetables",
+    "dessert": "Dessert",
+    "caffeine": "Caffeine",
+    "staple_food": "Staple Food",
+
+}
+CATEGORY_BY_LABEL = {v: k for k, v in CATEGORY_LABELS.items()}
+CATEGORY_DISPLAY = [CATEGORY_LABELS[k] for k in CATEGORIES]  # keep same order
+
+
+# Correct ALIASES to match actual foods
+ALIASES = {
+    "pizza slice": "pizza",
+    "french fries": "french_fries",
+    "fries": "french_fries",
+    "hot dog": "hot_dog",
+    "ice cream": "ice_cream",
+    "spaghetti": "spaghetti",
+    "fried rice": "fried_rice",
+    "white rice": "white_rice",
+    "cooked rice": "white_rice",
+    "rice": "white_rice",
+    "donut": "donuts",
+    "waffle": "waffles",
+    "pancake": "pancakes",
+    "hamburger": "hamburger",
+    "burger": "hamburger",
+    "cheeseburger": "hamburger",
+    "steak": "steak",
+    "beef steak": "steak",
+    "grilled salmon": "grilled_salmon",
+    "salmon": "grilled_salmon",
+    "fried chicken": "fried_chicken",
+    "chicken curry": "chicken_curry",
+    "sashimi": "sashimi",
+    "sushi": "sushi",
+    "bacon": "bacon",
+    "banana": "banana",
+    "apple": "apple",
+    "pineapple": "pineapple",
+    "pear": "pears",
+    "grape": "grape",
+    "orange": "orange",
+    "watermelon": "watermelon",
+    "strawberry": "strawberry",
+    "lemon": "lemon",
+    "papaya": "papaya",
+    "salad": "salad",
+    "vegetable soup": "vegetable_soup",
+    "corn": "corn",
+    "broccoli": "broccoli",
+    "tomato": "tomato",
+    "potato": "potato",
+    "cabbage": "cabbage",
+    "onion": "onions",
+    "lettuce": "lettuce",
+    "cucumber": "cucumbers",
+    "cheesecake": "cheesecake",
+    "apple pie": "apple_pie",
+    "croissant": "croissant",
+    "toast": "toast",
+    "tiramisu": "tiramisu",
+    "chocolate cake": "chocolate_cake",
+    "cake": "chocolate_cake",
+    "coffee": "coffee",
+    "espresso": "coffee",
+    "latte": "coffee"
+}
+def normalize_food(name: str) -> str:
+    raw = str(name).strip().lower()
+    if raw in ALIASES:
+        return ALIASES[raw]
+    return raw.replace(" ", "_")
+
+# Validation
+def validate_age(x):
+    try:
+        v = int(float(x))
+        return (5 <= v <= 100), v
+    except Exception:
+        return False, None
+
+def validate_gender(x):
+    g = str(x).strip().lower()
+    if g in ("male", "m"):
+        return True, "male"
+    if g in ("female", "f"):
+        return True, "female"
+    return False, None
+
+def validate_stress(x):
+    try:
+        v = int(float(x))
+        return (1 <= v <= 10), v
+    except Exception:
+        return False, None
+
+def validate_c_value(x):
+    try:
+        v = float(x)  # allow decimals like 0.5
+        return (0 <= v <= 2), v
+    except Exception:
+        return False, None
+
+def validate_portion(x):
+    try:
+        v = float(x)
+        return (10 <= v <= 2000), v
+    except Exception:
+        return False, None
+
+def validate_hours_since_meal(x):
+    try:
+        v = float(x)
+        return (0 <= v <= 24), v
+    except Exception:
+        return False, None
+
+def validate_hours_food2(x):
+    try:
+        v = float(x)
+        return (0 <= v <= 6), v
+    except Exception:
+        return False, None
+
+
+def validate_hr(x):
+    try:
+        v = float(x)
+        return (30 <= v <= 220), v
+    except Exception:
+        return False, None
+
+def validate_temp(x):
+    try:
+        v = float(x)
+        return (30.0 <= v <= 45.0), v
+    except Exception:
+        return False, None
+
+def validate_sleep_pressure(x):
+    try:
+        v = float(x)
+        return (0.0 <= v <= 10.0), v
+    except Exception:
+        return False, None
+
+def validate_weight_kg(x):
+    try:
+        v = float(x)
+        return (30.0 <= v <= 200.0), v
+    except Exception:
+        return False, None
+
+
+# Factors convention
+def get_h_value(hr):
+    if hr < 71:
+        return 1.00
+    elif 71 <= hr <= 90:
+        return 1.05
+    elif 91 <= hr <= 110:
+        return 1.10
+    elif 111 <= hr <= 130:
+        return 1.15
+    elif 131 <= hr <= 150:
+        return 1.20
+    else:
+        return 1.25
+
+def get_b_value(temp):
+    if temp < 36.0:
+        return 0.95
+    elif 36.0 <= temp <= 37.0:
+        return 1.00
+    elif 37.1 <= temp <= 37.5:
+        return 1.05
+    else:
+        return 1.10
+
+def get_s_value(gender):
+    g = str(gender).strip().lower()
+    return 1.05 if g in ("female", "f") else 1.00
+
+def get_c_value(bluelight):
+    # screen time before bed (hours): 0 - 2
+    if bluelight <= 0.5:
+        return 1
+    elif 0.5 <= bluelight < 1:
+        return 1.05
+    elif 1 <= bluelight < 2:
+        return 1.12
+    else:
+        return 1.15
+
+def get_t_value(stress_level):
+    s = max(1, min(10, int(stress_level)))
+    if s <= 2:
+        return 1.00
+    elif s == 3:
+        return 1.03
+    elif s == 4:
+        return 1.06
+    elif s == 5:
+        return 1.09
+    elif s == 6:
+        return 1.12
+    elif s == 7:
+        return 1.15
+    elif s == 8:
+        return 1.18
+    elif s == 9:
+        return 1.21
+    else:
+        return 1.24
+
+def get_age_baseline(age):
+    if age <= 19:
+        return 5
+    elif age <= 40:
+        return 7
+    elif age <= 60:
+        return 6
+    else:
+        return 5
+
+def get_meal_timing_penalty(hours_since_meal):
+    # Continuous exponential decay penalty instead of step cutoffs.
+    # Max penalty ~15 min right after eating, decays with tau = 2.5 hours.
+    t = max(0.0, float(hours_since_meal))
+    return 15.0 * math.exp(-t / 2.5)
+
+def get_portion_multiplier(portion_grams):
+    if portion_grams <= 200:
+        return 1.0
+    elif portion_grams <= 500:
+        return 1.0 + (portion_grams - 200) / 300 * 0.5
+    else:
+        return 1.5
+
+def format_macros(info):
+    return (
+        f"C{info.get('carbs', 0)}, S{info.get('sugar', 0)}, F{info.get('fat', 0)}, "
+        f"Fi{info.get('fiber', 0)}, GI{info.get('gi', 0)}, Ca{info.get('caffeine', 0)}, "
+        f"Sp{info.get('spice', 0)}, Ty{info.get('tyramine', 0)}, Tr{info.get('tryptophan', 0)}, "
+        f"Mg{info.get('magnesium', 0)}, Me{info.get('melatonin', 0)}"
+    )
+
+def get_sleep_pressure_multiplier(sleep_pressure):
+    p = float(sleep_pressure)
+    if p < 0: p = 0.0
+    if p > 10: p = 10.0
+    return round(1.2 - (p / 10.0) * 0.4, 3)
+
+def calculate_glycemic_effect(food_name, carb_grams, fiber_grams, hours_before_bed):
+    key = normalize_food(food_name)
+    gi = 50
+    for cat in all_foods.values():
+        if key in cat:
+            gi = float(cat[key].get("glycemic_index", 50))
+            break
+    glycemic_load = (gi * max(0.0, carb_grams - fiber_grams)) / 100.0
+
+    if glycemic_load >= 20.0:
+        base = 4.0
+    elif glycemic_load >= 10.0:
+        base = 2.0
+    else:
+        base = 0.0
+
+    if gi < 55:
+        base = -base * 0.5
+
+    h = float(hours_before_bed)
+    if h <= 1.0:
+        tf = 1.0
+    elif h <= 2.0:
+        tf = 0.7
+    elif h <= 3.0:
+        tf = 0.4
+    elif h <= 4.0:
+        tf = 0.2
+    else:
+        tf = 0.0
+
+    effect = base * tf
+    return {
+        "gi": gi,
+        "glycemic_load": round(glycemic_load, 1),
+        "effect_minutes": round(effect, 1),
+        "timing_factor": tf
+    }
+
+def calculate_caffeine_effect(food_name, portion_grams, hours_since_ingestion, body_weight_kg=70.0):
+    key = normalize_food(food_name)
+    mg_per_100g = 0
+    for cat in all_foods.values():
+        if key in cat:
+            mg_per_100g = float(cat[key].get("caffeine", 0))
+            break
+
+    total_mg = (float(mg_per_100g) * float(portion_grams)) / 100.0
+
+    if total_mg <= 0:
+        return {"caffeine_mg": 0.0, "effective_mg": 0.0, "dose_mg_per_kg": 0.0, "effect_minutes": 0.0}
+
+    half_life = 5.7
+    k = math.log(2) / half_life
+    h = max(0.0, float(hours_since_ingestion))
+    effective = total_mg * math.exp(-k * h)
+
+    bw = float(body_weight_kg)
+    if bw <= 0:
+        bw = 70.0
+    dose = effective / bw  # mg/kg
+
+    if dose <= 1.0:
+        minutes = dose * 15.0
+    elif dose <= 3.0:
+        minutes = 15.0 + (dose - 1.0) * 7.5
+    else:
+        minutes = 30.0
+
+    return {
+        "caffeine_mg": round(total_mg, 1),
+        "effective_mg": round(effective, 1),
+        "dose_mg_per_kg": round(dose, 2),
+        "effect_minutes": round(minutes, 1)
+    }
+
+
+# Physiology factors(K)
+
+def food_effect_score(food_name, portion_grams):
+    key = normalize_food(food_name)
+
+    # Search through all categories to find the food
+    info = None
+    for category_name, category_dict in all_foods.items():
+        if key in category_dict:
+            info = category_dict[key]
+            break
+
+    if not info:
+        return None, None
+
+    # Scale values based on portion size
+    scale = portion_grams / 100.0
+
+    # Extract and scale nutritional values
+    calories = info.get("calories", 0) * scale
+    carbs = info.get("carbs", 0) * scale
+    sugar = info.get("sugar", 0) * scale
+    fat = info.get("fat", 0) * scale
+    saturated_fat = info.get("sat_fat", fat * 0.3) * scale
+    fiber = info.get("fiber", 0) * scale
+    protein = info.get("protein", 0) * scale
+    sodium = info.get("sodium", 0) * scale
+    potassium = info.get("potassium", 0) * scale
+    magnesium = info.get("magnesium", 0) * scale
+    water = info.get("water", 0) * scale
+
+    # Apply new SOL formula
+    sol = (0 * calories) + (0.03 * carbs) + (0.08 * sugar) + (0.19 * fat) + (0.20 * saturated_fat) \
+          - (0.50 * fiber) + (0.05 * protein) + (0.001 * sodium) - (0.001 * potassium) - (0.0018 * magnesium) + (0.8* caffeine) +(0 * water)
+
+    return sol, info
+
+def calc_sld_one(food_name, hr, temp, age, gender, stress, portion_grams,
+                 hours_since_meal, bluelight, sleep_pressure=5.0, body_weight_kg=70.0):
+    """Complete scientific SOL prediction for single food"""
+
+    fs, info = food_effect_score(food_name, portion_grams)
+    if fs is None:
+        return None, None, None
+
+    age_baseline = get_age_baseline(age)
+    timing_penalty = get_meal_timing_penalty(hours_since_meal)
+    portion_mult = get_portion_multiplier(portion_grams)
+
+    B = get_b_value(temp)
+    H = get_h_value(hr)
+    S = get_s_value(gender)
+    T = get_t_value(stress)
+    C = get_c_value(bluelight)
+    P = get_sleep_pressure_multiplier(sleep_pressure)
+
+    K_physiological = B * H * S * T * C * P
+
+    carb_grams = info.get('carbs', 0) * (portion_grams / 100.0)
+    fiber_grams = info.get('fiber', 0) * (portion_grams / 100.0)
+    glycemic_effect = calculate_glycemic_effect(food_name, carb_grams, fiber_grams, hours_since_meal)
+    caffeine_effect = calculate_caffeine_effect(food_name, portion_grams, hours_since_meal, body_weight_kg)
+
+    sld_base = age_baseline + fs + timing_penalty
+    sld_base = sld_base * portion_mult
+    sld_base = sld_base * K_physiological
+
+    sld_total = sld_base + glycemic_effect['effect_minutes'] + caffeine_effect['effect_minutes']
+    sld_total = max(1.0, min(60.0, sld_total))
+
+    debug = {
+        'age_baseline': age_baseline,
+        'food_effect': fs,
+        'timing_penalty': timing_penalty,
+        'portion_multiplier': portion_mult,
+        'physiological_factors': {
+            'B_temp': B, 'H_hr': H, 'S_gender': S,
+            'T_stress': T, 'C_bluelight': C, 'P_sleep_pressure': P,
+            'K_total': K_physiological
+        },
+        'glycemic_effect': glycemic_effect,
+        'caffeine_effect': caffeine_effect,
+        'sleep_pressure_score': sleep_pressure,
+        'final_calculation': {
+            'base_sld': sld_base,
+            'glycemic_addition': glycemic_effect['effect_minutes'],
+            'caffeine_addition': caffeine_effect['effect_minutes'],
+            'total_sld': sld_total
+        }
+    }
+
+    return float(np.round(sld_total, 2)), info, debug
+
+
+def calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age,
+                 gender, stress, bluelight, sleep_pressure=5.0, body_weight_kg=70.0):
+#Complete scientific SOL prediction for two foods
+
+    d1, info1, dbg1 = calc_sld_one(food1, hr, temp, age, gender, stress, grams1, h1,
+                                   bluelight, sleep_pressure, body_weight_kg)
+    if d1 is None:
+        return None, None
+
+    fs1, _ = food_effect_score(food1, grams1)
+    fs2, info2 = food_effect_score(food2, grams2)
+    if fs2 is None:
+        return None, None
+
+    age_baseline = get_age_baseline(age)
+    t1 = get_meal_timing_penalty(h1)
+    t2 = get_meal_timing_penalty(h2)
+
+    portion_mult = get_portion_multiplier(grams1 + grams2)
+
+    B = get_b_value(temp)
+    H = get_h_value(hr)
+    S = get_s_value(gender)
+    T = get_t_value(stress)
+    C = get_c_value(bluelight)
+    P = get_sleep_pressure_multiplier(sleep_pressure)
+
+    K_physiological = B * H * S * T * C * P
+
+    sld_base = age_baseline + (fs1 + fs2) + (t1 + t2)
+    sld_base = sld_base * portion_mult
+    sld_base = sld_base * K_physiological
+
+    carb1 = info1.get('carbs', 0) * (grams1 / 100.0)
+    fiber1 = info1.get('fiber', 0) * (grams1 / 100.0)
+    glycemic1 = calculate_glycemic_effect(food1, carb1, fiber1, h1)
+
+    carb2 = info2.get('carbs', 0) * (grams2 / 100.0)
+    fiber2 = info2.get('fiber', 0) * (grams2 / 100.0)
+    glycemic2 = calculate_glycemic_effect(food2, carb2, fiber2, h2)
+
+    caffeine1 = calculate_caffeine_effect(food1, grams1, h1, body_weight_kg)
+    caffeine2 = calculate_caffeine_effect(food2, grams2, h2, body_weight_kg)
+
+    sld_total = (sld_base +
+                 glycemic1['effect_minutes'] + glycemic2['effect_minutes'] +
+                 caffeine1['effect_minutes'] + caffeine2['effect_minutes'])
+
+    sld_total = max(5.0, min(60.0, sld_total))
+
+    debug = {
+        'age_baseline': age_baseline,
+        'food_effects': {'food1': fs1, 'food2': fs2},
+        'timing_penalties': {'t1': t1, 't2': t2},
+        'portion_multiplier': portion_mult,
+        'physiological_factors': {
+            'B_temp': B, 'H_hr': H, 'S_gender': S,
+            'T_stress': T, 'C_bluelight': C, 'P_sleep_pressure': P,
+            'K_total': K_physiological
+        },
+        'glycemic_effects': {'food1': glycemic1, 'food2': glycemic2},
+        'caffeine_effects': {'food1': caffeine1, 'food2': caffeine2},
+        'sleep_pressure_score': sleep_pressure,
+        'final_calculation': {
+            'base_sld': sld_base,
+            'total_glycemic': glycemic1['effect_minutes'] + glycemic2['effect_minutes'],
+            'total_caffeine': caffeine1['effect_minutes'] + caffeine2['effect_minutes'],
+            'total_sld': sld_total
+        }
+    }
+
+    return float(np.round(sld_total, 2)), (info1, info2, debug)
+
+# Image recognition model setup
+print("Loading CLIP...")
+model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+model = model.to(device).eval()
+tokenizer = open_clip.get_tokenizer("ViT-B-32")
+prompts = [f"a photo of {c.replace('_', ' ')}" for c in FOODS]
+with torch.no_grad():
+    text = tokenizer(prompts).to(device)
+    text_features = model.encode_text(text)
+    text_features /= text_features.norm(dim=-1, keepdim=True)
+print("CLIP set up successfully.")
+
+def classify_frame_bgr(frame_bgr, topk=3):
+    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(rgb)
+
+    img = preprocess(pil_img.convert("RGB")).unsqueeze(0).to(device)
+    with torch.no_grad():
+        img_feat = model.encode_image(img)
+        img_feat /= img_feat.norm(dim=-1, keepdim=True)
+        logits = 100.0 * img_feat @ text_features.T
+        probs = logits.softmax(dim=-1)[0]
+
+    probs_np = probs.detach().cpu().numpy()
+    idx = np.argsort(probs_np)[::-1][:topk]
+    return [(FOODS[i], float(probs_np[i])) for i in idx], None
+
+# Graph User Interface(GUi) application setup
+class App:
+    def __init__(self, root):
+        self.root = root
+        root.title("Noctura-1.3 Food Sleep Latency Prediction System")
+
+
+        # ---- runtime values (must exist before _ui_tick / loops) ----
+        self.hr_value = None
+        self.temp_value = None
+
+        self.ser = None
+        self.serial_thread = None
+        self.serial_stop = threading.Event()
+
+        self.cap = None
+        self.camera_running = False
+        self.last_frame = None
+
+        #Autoinputs
+        self.age_var = tk.StringVar(value="15")
+        self.gender_var = tk.StringVar(value="male")
+        self.stress_var = tk.StringVar(value="5")
+        self.grams_var = tk.StringVar(value="300")
+        self.hours_var = tk.StringVar(value="2")
+        self.screen_var = tk.StringVar(value="0.5")  # 0-2 hours
+        self.hr_manual_var = tk.StringVar(value="70")
+        self.temp_manual_var = tk.StringVar(value="36.5")
+        self.sleep_pressure_var = tk.StringVar(value="5")
+        self.weight_var = tk.StringVar(value="70")
+
+        left = tk.Frame(root, padx=10, pady=10)
+        left.grid(row=0, column=0, sticky="n")
+        right = tk.Frame(root, padx=10, pady=10)
+        right.grid(row=0, column=1, sticky="n")
+
+        # Data inputs.
+        tk.Label(left, text="Manual Inputs").grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self._row_entry(left, 1, "Age (5-100)", self.age_var)
+        self._row_entry(left, 2, "Gender (male/female)", self.gender_var)
+        self._row_entry(left, 3, "Stress (1-10)", self.stress_var)
+        self._row_entry(left, 4, "Portion (10-2000g)", self.grams_var)
+        self._row_entry(left, 5, "Hours since meal (0-24)", self.hours_var)
+        self._row_entry(left, 6, "Screen time before bed(0min-2h)", self.screen_var)
+        self._row_entry(left, 7, "Manual HR (30-220 bpm)", self.hr_manual_var)
+        self._row_entry(left, 8, "Manual Temp (30-45 °C)", self.temp_manual_var)
+        self._row_entry(left, 9, "Sleep pressure (0-10)", self.sleep_pressure_var)
+
+
+        # Arduino Connection
+        tk.Label(left, text="Arduino connection setup ").grid(row=11, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.port_var = tk.StringVar(value="COM6")
+        self.baud_var = tk.StringVar(value="115200")
+        self._row_entry(left, 12, "Port", self.port_var)
+        self._row_entry(left, 13, "Baud", self.baud_var)
+
+        self.btn_connect = tk.Button(left, text="Connect Arduino", command=self.connect_arduino)
+        self.btn_connect.grid(row=14, column=0, sticky="ew", pady=(6, 0))
+        self.btn_disconnect = tk.Button(left, text="Disconnect", command=self.disconnect_arduino, state="disabled")
+        self.btn_disconnect.grid(row=14, column=1, sticky="ew", pady=(6, 0))
+
+        self.hr_label = tk.Label(left, text="HR: -- bpm ")
+        self.hr_label.grid(row=15, column=0, sticky="w", pady=(6, 0))
+        self.temp_label = tk.Label(left, text="Temp: -- °C ")
+        self.temp_label.grid(row=15, column=1, sticky="w", pady=(6, 0))
+
+        # Manual inputs to avoid the camera problems
+        tk.Label(left, text="Food selection(If the camera is not applicable) ").grid(
+            row=16, column=0, columnspan=2, sticky="w", pady=(10, 0)
+        )
+
+        # First level: Category selection (DISPLAY labels, but we map back to keys)
+        tk.Label(left, text="Category:").grid(row=17, column=0, sticky="w", pady=2)
+
+        self.category_var = tk.StringVar(value=CATEGORY_DISPLAY[0])  # display label
+        self.category_dropdown = tk.OptionMenu(left, self.category_var, *CATEGORY_DISPLAY,
+                                               command=self._update_food_dropdown_display)
+        self.category_dropdown.config(width=20)
+        self.category_dropdown.grid(row=17, column=1, sticky="w", pady=2)
+
+        # Second level: Food selection
+        tk.Label(left, text="Food Item:").grid(row=17, column=0, sticky="w", pady=2)
+        self.food_var = tk.StringVar(value="")
+        self.food_dropdown = tk.OptionMenu(left, self.food_var, "")
+        self.food_dropdown.config(width=20)
+        self.food_dropdown.grid(row=18, column=1, sticky="w", pady=2)
+
+        # Init with first category
+        first_cat_key = CATEGORY_BY_LABEL[self.category_var.get()]
+        self._update_food_dropdown(first_cat_key)
+
+        tk.Button(left, text="Calculate:D", command=self.calculate_manual).grid(
+            row=19, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+        )
+
+        # Camera setup
+        tk.Label(left, text="Camera").grid(row=20, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        tk.Button(left, text="Open the Camera", command=self.start_camera).grid(row=21, column=0, sticky="ew", pady=(6, 0))
+        tk.Button(left, text="Close the Camera", command=self.stop_camera).grid(row=21, column=1, sticky="ew", pady=(6, 0))
+        tk.Button(left, text="Capture & Classify", command=self.capture_and_classify).grid(
+            row=22, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+        )
+
+        tk.Button(left, text="Validate Inputs", command=self.validate_inputs).grid(
+            row=23, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+        )
+        tk.Button(left, text="Clear Output", command=self.clear_output).grid(
+            row=24, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+        )
+
+        # Right side screen setup
+        # Create a container for the right side
+        right_container = tk.Frame(right)
+        right_container.pack(fill="both", expand=True)
+
+        # TOP: Camera frame (will be shown/hidden)
+        self.camera_frame = tk.Frame(right_container)
+        self.camera_label = tk.Label(self.camera_frame, text="Camera ")
+        self.camera_label.pack(anchor="w")
+        self.preview = tk.Label(self.camera_frame, width=450, height=250, bg="black")
+        self.preview.pack(pady=6)
+        # Initially HIDDEN
+        self.camera_frame.pack_forget()
+
+        # Output box
+        tk.Label(right_container, text="Output Console").pack(anchor="w")
+
+        out_frame = tk.Frame(right_container)
+        out_frame.pack(fill="both", expand=True, pady=(5, 0))
+
+        scroll = tk.Scrollbar(out_frame)
+        scroll.pack(side="right", fill="y")
+
+        self.output = tk.Text(out_frame, width=80, height=20, yscrollcommand=scroll.set)
+        self.output.pack(side="left", fill="both", expand=True)
+
+        scroll.config(command=self.output.yview)
+
+        self.log("Ready. Please start scanning the foods.\n")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.after(300, self._ui_tick)
+
+    def _update_food_dropdown(self, selected_category):
+        # Get foods from the selected category
+        category_foods = all_foods.get(selected_category, {})
+        food_names = list(category_foods.keys())
+
+        # Clear current food dropdown menu
+        menu = self.food_dropdown["menu"]
+        menu.delete(0, "end")
+
+        # Add new food items to dropdown
+        if food_names:
+            for food in food_names:
+                # Display with spaces instead of underscores
+                display_name = food.replace('_', ' ')
+                menu.add_command(
+                    label=display_name,
+                    command=lambda value=food: self.food_var.set(value)
+                )
+            # Set default selection to first food item
+            self.food_var.set(food_names[0])
+        else:
+            self.food_var.set("")
+
+    def _update_food_dropdown_display(self, selected_label):
+        # selected_label is like "Meats" -> convert to key "meats"
+        cat_key = CATEGORY_BY_LABEL.get(selected_label, None)
+        if cat_key is None:
+            return
+        self._update_food_dropdown(cat_key)
+
+    # UI setup
+    def _row_entry(self, parent, r, label, var):
+        tk.Label(parent, text=label).grid(row=r, column=0, sticky="w", pady=2)
+        tk.Entry(parent, textvariable=var, width=22).grid(row=r, column=1, sticky="w", pady=2)
+
+    def log(self, msg):
+        self.output.insert(tk.END, msg + "\n")
+        self.output.see(tk.END)
+
+    def clear_output(self):
+        self.output.delete("1.0", tk.END)
+        # don't recreate variables (that breaks the entry bindings)
+        self.age_var.set("15")
+        self.gender_var.set("male")
+        self.stress_var.set("5")
+        self.grams_var.set("300")
+        self.hours_var.set("2")
+        self.screen_var.set("0.5")
+        self.hr_manual_var.set("70")
+        self.temp_manual_var.set("36.5")
+
+    def _ui_tick(self):
+        if self.hr_value is None:
+            self.hr_label.config(text="HR: -- bpm ")
+        else:
+            self.hr_label.config(text=f"HR: {self.hr_value:.1f} bpm")
+
+        if self.temp_value is None:
+            self.temp_label.config(text="Temp: -- °C ")
+        else:
+            self.temp_label.config(text=f"Temp: {self.temp_value:.2f} °C")
+
+        self.root.after(300, self._ui_tick)
+
+    # Validation checkup (outputs on the screen)
+    def validate_inputs(self):
+        errors = []
+
+        ok, _ = validate_age(self.age_var.get())
+        if not ok:
+            errors.append("Age invalid (5-100)")
+
+        ok, _ = validate_gender(self.gender_var.get())
+        if not ok:
+            errors.append("Gender invalid (male/female)")
+
+        ok, _ = validate_stress(self.stress_var.get())
+        if not ok:
+            errors.append("Stress invalid (1-10)")
+
+        ok, _ = validate_portion(self.grams_var.get())
+        if not ok:
+            errors.append("Portion invalid (10-2000g)")
+
+        ok, _ = validate_hours_since_meal(self.hours_var.get())
+        if not ok:
+            errors.append("Hours since meal invalid (0-24)")
+
+        ok, _ = validate_c_value(self.screen_var.get())
+        if not ok:
+            errors.append("Screen time before bed invalid (0-2)")
+        ok, _ = validate_hr(self.hr_manual_var.get())
+        if not ok:
+            errors.append("Manual HR invalid (30-220)")
+
+        ok, _ = validate_temp(self.temp_manual_var.get())
+        if not ok:
+            errors.append("Manual Temp invalid (30-45)")
+
+        if errors:
+            for e in errors:
+                self.log("INPUT ERROR" + e)
+            self.log("Fix inputs before calculating.\n")
+            return False
+        ok, _ = validate_sleep_pressure(self.sleep_pressure_var.get())
+        if not ok:
+            errors.append("Sleep pressure invalid (0-10)")
+
+        ok, _ = validate_weight_kg(self.weight_var.get())
+        if not ok:
+            errors.append("Body weight invalid (30-200 kg)")
+
+        self.log("All inputs are valid.\n")
+        return True
+
+    def _get_profile(self):
+        ok, age = validate_age(self.age_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Age must be 5-100.")
+            return None
+
+        ok, gender = validate_gender(self.gender_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Gender must be male/female.")
+            return None
+
+        ok, stress = validate_stress(self.stress_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Stress must be 1-10.")
+            return None
+
+        ok, grams = validate_portion(self.grams_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Portion must be 10-2000g.")
+            return None
+
+        ok, hours = validate_hours_since_meal(self.hours_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Hours since meal must be 0-24.")
+            return None
+
+        ok, screen = validate_c_value(self.screen_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Screen time before bed invalid.")
+            return None
+
+        ok, sp = validate_sleep_pressure(self.sleep_pressure_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Sleep pressure must be 0-10.")
+            return None
+
+        ok, wkg = validate_weight_kg(self.weight_var.get())
+        if not ok:
+            messagebox.showwarning("Invalid", "Body weight must be 30-200 kg.")
+            return None
+
+        if self.hr_value is None:
+            ok, hr = validate_hr(self.hr_manual_var.get())
+            if not ok:
+                messagebox.showwarning("Invalid", "Manual HR must be 30-220 bpm.")
+                return None
+        else:
+            hr = float(self.hr_value)
+
+        if self.temp_value is None:
+            ok, temp = validate_temp(self.temp_manual_var.get())
+            if not ok:
+                messagebox.showwarning("Invalid", "Manual Temp must be 30-45 °C.")
+                return None
+        else:
+            temp = float(self.temp_value)
+
+        return age, gender, stress, float(hr), float(temp), float(grams), float(hours), float(screen), float(sp), float(wkg)
+
+
+    # Arduino section
+    def connect_arduino(self):
+        if not SERIAL_OK:
+            messagebox.showerror("Missing pyserial", "Install: pip install pyserial")
+            return
+        if self.ser is not None:
+            return
+
+        port = self.port_var.get().strip()
+        try:
+            baud = int(self.baud_var.get().strip())
+        except Exception:
+            messagebox.showwarning("Invalid Baud", "Baud must be a number.")
+            return
+
+        try:
+            self.ser = serial.Serial(port, baudrate=baud, timeout=1)
+            time.sleep(2)
+
+            import statistics
+
+            self.log(f"[ARDUINO] Connected to {port} @ {baud}")
+            self.log("[ARDUINO] Taking 10-second measurement for accuracy...")
+
+            # Initial 10-second measurement
+            hr_values = []
+            temp_values = []
+            start_time = time.time()
+
+            while time.time() - start_time < 10.0:
+                if self.ser.in_waiting:
+                    try:
+                        line = self.ser.readline().decode(errors='ignore').strip()
+                        if line and "Finger=YES" in line and "Avg=" in line:
+
+                            # Get HR
+                            if "Avg=" in line:
+                                avg_start = line.find("Avg=") + 4
+                                avg_end = line.find(" ", avg_start)
+                                if avg_end == -1:
+                                    avg_end = len(line)
+                                hr_str = line[avg_start:avg_end]
+
+                                try:
+                                    hr = float(hr_str)
+                                    if 40 <= hr <= 180:
+                                        hr_values.append(hr)
+                                except:
+                                    pass
+
+                            # Get temperature
+                            if "To=" in line:
+                                temp_start = line.find("To=") + 3
+                                temp_end = line.find(" ", temp_start)
+                                if temp_end == -1:
+                                    temp_end = len(line)
+                                temp_str = line[temp_start:temp_end]
+
+                                if temp_str != "nan":
+                                    try:
+                                        temp = float(temp_str)
+                                        if 30 <= temp <= 42:
+                                            temp_values.append(temp)
+                                    except:
+                                        pass
+
+                    except:
+                        pass
+
+                time.sleep(0.05)
+
+            # Process initial measurement
+            if len(hr_values) >= 15:
+                hr_avg = statistics.mean(hr_values)
+                hr_median = statistics.median(hr_values)
+
+                # Use median if data spread is large
+                if statistics.stdev(hr_values) > 10:
+                    final_hr = hr_median
+                else:
+                    final_hr = hr_avg
+
+                self.hr_manual_var.set(f"{final_hr:.0f}")
+                self.hr_value = final_hr
+                self.log(f"[ARDUINO] Initial HR: {final_hr:.0f}bpm (from {len(hr_values)} samples)")
+
+                if len(temp_values) >= 8:
+                    temp_avg = statistics.mean(temp_values)
+                    self.temp_manual_var.set(f"{temp_avg:.1f}")
+                    self.temp_value = temp_avg
+                    self.log(f"[ARDUINO] Initial Temp: {temp_avg:.1f}°C")
+                else:
+                    self.log("[ARDUINO] Temperature: Not enough samples")
+
+            else:
+                self.log("[ARDUINO] Warning: Not enough HR samples. Using manual input.")
+                # Don't update textboxes if data is insufficient
+
+            # Start background thread
+            self.serial_stop.clear()
+            self.serial_thread = threading.Thread(target=self._serial_loop, daemon=True)
+            self.serial_thread.start()
+
+            self.btn_connect.config(state="disabled")
+            self.btn_disconnect.config(state="normal")
+            self.log("[ARDUINO] Background monitoring started (10-second updates)")
+
+        except Exception as e:
+            self.ser = None
+            messagebox.showerror("Arduino Error", f"Could not open {port}\n\n{str(e)}")
+            return
+    # Disconnect the Arduino
+    def disconnect_arduino(self):
+        self.serial_stop.set()
+        try:
+            if self.ser is not None:
+                self.ser.close()
+        except Exception:
+            pass
+        self.ser = None
+        self.btn_connect.config(state="normal")
+        self.btn_disconnect.config(state="disabled")
+        self.log("[ARDUINO] Disconnected\n")
+
+    def _serial_loop(self):
+        import statistics
+        import time
+
+        while not self.serial_stop.is_set():
+            try:
+                # Collect data for 10 seconds for maximum accuracy
+                hr_values = []
+                temp_values = []
+                start_time = time.time()
+
+                print(f"[SENSOR] Starting 10-second data collection...")
+
+                # Collect data for 10 seconds
+                collection_time = 10.0
+                while (time.time() - start_time < collection_time and
+                       not self.serial_stop.is_set()):
+
+                    if self.ser.in_waiting:
+                        try:
+                            line = self.ser.readline().decode(errors='ignore').strip()
+                            if not line:
+                                continue
+
+                            # Only process if finger is detected
+                            if "Finger=YES" in line and "Avg=" in line:
+
+                                # --- Extract Heart Rate ---
+                                if "Avg=" in line:
+                                    # Find the Avg= value
+                                    avg_idx = line.find("Avg=")
+                                    if avg_idx != -1:
+                                        # Get substring starting after "Avg="
+                                        substr = line[avg_idx + 4:]
+                                        # Find end of number (space or end of line)
+                                        space_idx = substr.find(" ")
+                                        if space_idx == -1:
+                                            hr_str = substr
+                                        else:
+                                            hr_str = substr[:space_idx]
+
+                                        try:
+                                            hr = float(hr_str)
+                                            # Validate HR range
+                                            if 40 <= hr <= 180:  # Reasonable HR range
+                                                hr_values.append(hr)
+                                                # Optional: Show progress
+                                                elapsed = time.time() - start_time
+                                                print(
+                                                    f"[SENSOR] Sample {len(hr_values)}: HR={hr:.0f} ({elapsed:.1f}s/{collection_time}s)")
+                                        except ValueError:
+                                            pass
+
+                                # --- Extract Temperature ---
+                                if "To=" in line:
+                                    to_idx = line.find("To=")
+                                    if to_idx != -1:
+                                        substr = line[to_idx + 3:]
+                                        space_idx = substr.find(" ")
+                                        if space_idx == -1:
+                                            temp_str = substr
+                                        else:
+                                            temp_str = substr[:space_idx]
+
+                                        if temp_str != "nan":
+                                            try:
+                                                temp = float(temp_str)
+                                                # Validate temperature range
+                                                if 30 <= temp <= 42:  # Reasonable body temp
+                                                    temp_values.append(temp)
+                                            except ValueError:
+                                                pass
+
+                        except Exception as e:
+                            print(f"[SENSOR] Parse error: {e}")
+                            continue
+
+                    # Small delay to prevent CPU overuse
+                    time.sleep(0.05)
+
+                # --- After 10 seconds: Calculate and Update ---
+                print(f"[SENSOR] Collection complete. Got {len(hr_values)} HR samples, {len(temp_values)} temp samples")
+
+                if len(hr_values) >= 15:  # Need at least 15 samples (1.5 per second)
+                    # Calculate statistics
+                    hr_avg = statistics.mean(hr_values)
+                    hr_median = statistics.median(hr_values)
+                    hr_std = statistics.stdev(hr_values) if len(hr_values) > 1 else 0
+
+                    # Use median if data is noisy (high standard deviation)
+                    if hr_std > 10:
+                        print(f"[SENSOR] Data noisy (std={hr_std:.1f}), using median")
+                        final_hr = hr_median
+                    else:
+                        final_hr = hr_avg
+
+                    # Update HR textbox
+                    self.hr_manual_var.set(f"{final_hr:.0f}")
+                    self.hr_value = final_hr
+
+                    print(f"[SENSOR] HR: {final_hr:.0f}bpm (Avg:{hr_avg:.0f}, Med:{hr_median:.0f}, Std:{hr_std:.1f})")
+                    self.log(f"[SENSOR] HR updated: {final_hr:.0f}bpm (from {len(hr_values)} samples)")
+
+                    # Update temperature if we have enough samples
+                    if len(temp_values) >= 8:  # Need at least 8 temperature samples
+                        temp_avg = statistics.mean(temp_values)
+                        temp_median = statistics.median(temp_values)
+
+                        # Use median for temperature too
+                        final_temp = temp_median if abs(temp_avg - temp_median) > 0.5 else temp_avg
+
+                        self.temp_manual_var.set(f"{final_temp:.1f}")
+                        self.temp_value = final_temp
+
+                        print(f"[SENSOR] Temp: {final_temp:.1f}°C")
+                        self.log(f"[SENSOR] Temp updated: {final_temp:.1f}°C")
+                    else:
+                        print(f"[SENSOR] Not enough temp samples ({len(temp_values)}), keeping previous value")
+
+                else:
+                    print(f"[SENSOR] Not enough HR samples ({len(hr_values)}), waiting...")
+                    self.log(f"[SENSOR] Insufficient data: only {len(hr_values)} HR samples")
+
+                # Wait 30 seconds before next measurement (don't update too frequently)
+                print("[SENSOR] Waiting 30 seconds before next measurement...")
+                for i in range(30):
+                    if self.serial_stop.is_set():
+                        break
+                    time.sleep(1)
+
+            except Exception as e:
+                print(f"[SENSOR] Major error: {e}")
+                time.sleep(5)  # Wait 5 seconds on major error
+    # Camera Section
+    def start_camera(self):
+        if self.camera_running:
+            return
+        cap = None
+        for i in range(3):
+            c = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if c.isOpened():
+                cap = c
+                self.log(f"The system is currently using camera index {i}\n")
+                break
+        if cap is None:
+            messagebox.showerror("Camera", "No camera found. Close other camera apps.")
+            return
+
+        self.cap = cap
+        self.camera_running = True
+
+        # SHOW camera preview at the TOP
+        self.camera_frame.pack(fill="x", pady=(0, 10))
+
+        self._camera_tick()
+
+    def stop_camera(self):
+        self.camera_running = False
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+        self.cap = None
+
+        # HIDE camera preview completely
+        self.camera_frame.pack_forget()
+        self.preview.config(image="", bg="gray")
+
+    def _camera_tick(self):
+        if not self.camera_running or self.cap is None:
+            return
+        ret, frame = self.cap.read()
+        if ret:
+            self.last_frame = frame.copy()
+            frame_small = cv2.resize(frame, (480, 270))
+            rgb = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            imgtk = ImageTk.PhotoImage(image=pil)
+            self.preview.imgtk = imgtk
+            self.preview.config(image=imgtk)
+        self.root.after(30, self._camera_tick)
+
+    # Popups for the second food
+    def _ask_choice_gui(self, preds):
+        win = tk.Toplevel(self.root)
+        win.title("Confirm Food Label")
+        win.grab_set()
+        tk.Label(win, text="Pick the correct food:").pack(anchor="w", padx=10, pady=8)
+
+        var = tk.IntVar(value=-1)
+        for i, (name, prob) in enumerate(preds, 1):
+            tk.Radiobutton(
+                win,
+                text=f"{i}. {name.replace('_', ' ')} ({prob * 100:.1f}%)",
+                variable=var,
+                value=i - 1
+            ).pack(anchor="w", padx=18)
+
+        result = {"val": None}
+
+        def ok():
+            v = var.get()
+            if v in (0, 1, 2):
+                result["val"] = v
+                win.destroy()
+            else:
+                messagebox.showwarning("Pick one", "Pick 1, 2, or 3 (or Cancel).")
+
+        def cancel():
+            result["val"] = None
+            win.destroy()
+
+        btn = tk.Frame(win)
+        btn.pack(pady=10)
+        tk.Button(btn, text="OK", width=10, command=ok).pack(side="left", padx=6)
+        tk.Button(btn, text="Cancel", width=10, command=cancel).pack(side="left", padx=6)
+        self.root.wait_window(win)
+        return result["val"]
+
+    def _ask_extra_food_popup(self, default_same_time=True):
+        win = tk.Toplevel(self.root)
+        win.title("Extra Food (Last 6 Hours)")
+        win.grab_set()
+
+        tk.Label(win, text="Extra food in the last 6 hours:").grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(10, 4))
+
+        # Food 2 Category
+        tk.Label(win, text="Food 2 Category:").grid(row=1, column=0, sticky="w", padx=10, pady=4)
+        cat2_var = tk.StringVar(value=CATEGORIES[0])
+        cat2_opt = tk.OptionMenu(win, cat2_var, *CATEGORIES)
+        cat2_opt.config(width=22)
+        cat2_opt.grid(row=1, column=1, sticky="w", padx=10, pady=4)
+
+        # Food 2 Item
+        tk.Label(win, text="Food 2 Item:").grid(row=2, column=0, sticky="w", padx=10, pady=4)
+        food2_var = tk.StringVar(value="")
+        food2_opt = tk.OptionMenu(win, food2_var, "")
+        food2_opt.config(width=22)
+        food2_opt.grid(row=2, column=1, sticky="w", padx=10, pady=4)
+
+        def update_food2_items(*_):
+            cat = cat2_var.get()
+            foods = list(all_foods[cat].keys())
+
+            menu = food2_opt["menu"]
+            menu.delete(0, "end")
+
+            for f in foods:
+                menu.add_command(label=f, command=lambda v=f: food2_var.set(v))
+
+            food2_var.set(foods[0])
+
+        update_food2_items()
+        cat2_var.trace_add("write", update_food2_items)
+
+        tk.Label(win, text="Portion 2 (g):").grid(row=3, column=0, sticky="w", padx=10, pady=4)
+        grams2_var = tk.StringVar(value="100")
+        tk.Entry(win, textvariable=grams2_var, width=22).grid(row=3, column=1, sticky="w", padx=10, pady=4)
+
+        same_time_var = tk.IntVar(value=1 if default_same_time else 0)
+        chk = tk.Checkbutton(win, text="Same time as main meal", variable=same_time_var)
+        chk.grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=(6, 0))
+
+        tk.Label(win, text="Hours since Food 2 (0-6):").grid(row=5, column=0, sticky="w", padx=10, pady=4)
+        hours2_var = tk.StringVar(value="1.0")
+        ent2 = tk.Entry(win, textvariable=hours2_var, width=22)
+        ent2.grid(row=5, column=1, sticky="w", padx=10, pady=4)
+
+        # disable hours2 if same time
+        def refresh_hours2():
+            ent2.config(state="disabled" if same_time_var.get() == 1 else "normal")
+        refresh_hours2()
+        same_time_var.trace_add("write", lambda *_: refresh_hours2())
+
+        result = {"val": None}
+
+        def ok():
+            okg, grams2 = validate_portion(grams2_var.get())
+            if not okg:
+                messagebox.showwarning("Invalid", "Portion2 must be 10-2000g.")
+                return
+
+            if same_time_var.get() == 1:
+                hours2 = None
+            else:
+                okh, hours2 = validate_hours_food2(hours2_var.get())
+                if not okh:
+                    messagebox.showwarning("Invalid", "Hours since Food2 must be 0-6.")
+                    return
+
+            result["val"] = dict(food2=food2_var.get(), grams2=float(grams2), same_time=bool(same_time_var.get()), hours2=hours2)
+            win.destroy()
+
+        def cancel():
+            result["val"] = None
+            win.destroy()
+
+        btn = tk.Frame(win)
+        btn.grid(row=6, column=0, columnspan=2, pady=12)
+        tk.Button(btn, text="OK", width=10, command=ok).pack(side="left", padx=6)
+        tk.Button(btn, text="Cancel", width=10, command=cancel).pack(side="left", padx=6)
+
+        self.root.wait_window(win)
+        return result["val"]
+
+    # Final outputs for the Sleep Onset Latency(SOL)
+    def _print_result(self, delay):
+        exact = float(delay)
+        lower = max(5, exact - 5)
+        upper = exact + 5
+        self.log(f"Exact sleep onset latency (SOL): {exact:.2f} minutes")
+        self.log(f"Estimated sleep latency range: {int(lower)}–{int(upper)} minutes\n")
+
+    # Manual outputs
+    def calculate_manual(self):
+        if not self.validate_inputs():
+            return
+        prof = self._get_profile()
+        if prof is None:
+            return
+        age, gender, stress, hr, temp, grams1, h1, screen, sp, wkg = prof
+
+        food1 = normalize_food(self.food_var.get())
+
+
+        self.log(f"1.HR={hr:.1f} bpm  "
+                 f"2.Temp={temp:.2f} °C "
+                 f"3.Age={age} years old")
+        self.log( f"4.Gender={gender} "
+                 f"5.Stress Level={stress}"
+                 f"6. Screen time before sleep ={screen} hours")
+        self.log(f"Food1={food1.replace('_',' ')} | Portion={grams1:.0f}g | Hour since the meal={h1:.1f}h ago")
+
+        extra = messagebox.askyesno("Extra Food", "Did you eat anything else in the last 6 hours?")
+        if not extra:
+            delay, info, _dbg = calc_sld_one(food1, hr, temp, age, gender, stress, grams1, h1, screen, sp, wkg)
+            if delay is None:
+                self.log("[RESULT] Missing nutrition data.\n")
+                return
+            self.log("[MACROS 1] " + format_macros(info))
+            self._print_result(delay)
+            return
+
+        ex = self._ask_extra_food_popup()
+        if ex is None:
+            self.log("[MANUAL] Extra food cancelled -> using main only.\n")
+            delay, info, _dbg = calc_sld_one(food1, hr, temp, age, gender, stress, grams1, h1, screen, sp, wkg)
+            if delay is None:
+                self.log("[RESULT] Missing nutrition data.\n")
+                return
+            self.log("[MACROS 1] " + format_macros(info))
+            self._print_result(delay)
+
+        food2 = normalize_food(ex["food2"])
+        grams2 = ex["grams2"]
+        h2 = h1 if ex["same_time"] else float(ex["hours2"])
+
+        self.log(f"Food2={food2.replace('_',' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
+        delay, infos = calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen)
+        if delay is None:
+            self.log("[RESULT] Missing nutrition data.\n")
+            return
+
+        info1, info2, _dbg = infos
+        self.log("[MACROS 1] " + format_macros(info1))
+        self.log("[MACROS 2] " + format_macros(info2))
+        self._print_result(delay)
+
+    # Camera
+    def capture_and_classify(self):
+        if not self.validate_inputs():
+            return
+        if self.last_frame is None:
+            messagebox.showwarning("Camera", "No frame yet. Start camera first.")
+            return
+
+        prof = self._get_profile()
+        if prof is None:
+            return
+        age, gender, stress, hr, temp, grams1, h1, screen = prof
+
+        self.log("\n Physiological DatA")
+        self.log(f"Hear Rate={hr:.1f} bpm, Body temperature={temp:.2f} °C, Age={age}, Gender={gender}, Stress Level ={stress}")
+
+        preds, _ = classify_frame_bgr(self.last_frame, topk=3)
+        self.log("Top Matches :")
+        for i, (name, prob) in enumerate(preds, 1):
+            self.log(f"  {i}. {name.replace('_',' ')} ({prob*100:.1f}%)")
+
+        choice = self._ask_choice_gui(preds)
+        if choice is None:
+            self.log("[CAPTURE] Cancelled.\n")
+            return
+        picked = preds[choice][0]
+        self.log(f"Picked: {picked.replace('_',' ')} | Portion={grams1:.0f}g | {h1:.1f}h ago")
+
+        extra = messagebox.askyesno("Extra Food", "Did you eat anything else in the last 6 hours?")
+        if not extra:
+            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen)
+            if delay is None:
+                self.log("[RESULT] Missing nutrition data.\n")
+                return
+            self.log("[MACROS 1] " + format_macros(info))
+            self._print_result(delay)
+            return
+
+        ex = self._ask_extra_food_popup()
+        if ex is None:
+            self.log("[CAPTURE] Extra food cancelled -> using main only.\n")
+            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen)
+            if delay is None:
+                self.log("[RESULT] Missing nutrition data.\n")
+                return
+            self.log("[MACROS 1] " + format_macros(info))
+            self._print_result(delay)
+            return
+
+        food2 = normalize_food(ex["food2"])
+        grams2 = ex["grams2"]
+        h2 = h1 if ex["same_time"] else float(ex["hours2"])
+
+        self.log(f"Food2={food2.replace('_',' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
+        delay, infos = calc_sld_two(picked, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen)
+        if delay is None:
+            self.log("[RESULT] Missing nutrition data.\n")
+            return
+
+        info1, info2, _dbg = infos
+        self.log("[MACROS 1] " + format_macros(info1))
+        self.log("[MACROS 2] " + format_macros(info2))
+        self._print_result(delay)
+
+    #Close the GUI
+    def on_close(self):
+        self.stop_camera()
+        self.disconnect_arduino()
+        self.root.destroy()
+
+def run():
+    root = tk.Tk()
+    App(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    run()
