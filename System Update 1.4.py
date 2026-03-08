@@ -1107,38 +1107,58 @@ class App:
                 if self.ser.in_waiting:
                     try:
                         line = self.ser.readline().decode(errors='ignore').strip()
-                        if line and "Finger=YES" in line and "Avg=" in line:
+                        if not line:
+                            continue
 
-                            # Get HR
-                            if "Avg=" in line:
-                                avg_start = line.find("Avg=") + 4
-                                avg_end = line.find(" ", avg_start)
-                                if avg_end == -1:
-                                    avg_end = len(line)
-                                hr_str = line[avg_start:avg_end]
-
+                        # -------- NEW: Parse simple CSV line from Arduino --------
+                        if "," in line and "Finger=" not in line:
+                            parts = line.split(",")
+                            if len(parts) == 2:
                                 try:
-                                    hr = float(hr_str)
-                                    if 40 <= hr <= 180:
+                                    hr = float(parts[0])
+                                    temp = float(parts[1])
+
+                                    if 30 <= hr <= 220:
                                         hr_values.append(hr)
+
+                                    if 30 <= temp <= 42:
+                                        temp_values.append(temp)
+
                                 except:
                                     pass
+                            continue
 
-                            # Get temperature
-                            if "To=" in line:
-                                temp_start = line.find("To=") + 3
-                                temp_end = line.find(" ", temp_start)
-                                if temp_end == -1:
-                                    temp_end = len(line)
-                                temp_str = line[temp_start:temp_end]
 
-                                if temp_str != "nan":
-                                    try:
-                                        temp = float(temp_str)
-                                        if 30 <= temp <= 42:
-                                            temp_values.append(temp)
-                                    except:
-                                        pass
+                        #     # Get HR
+                        # if "Avg=" in line:
+                        #     avg_start = line.find("Avg=") + 4
+                        #     avg_end = line.find(" ", avg_start)
+                        #     if avg_end == -1:
+                        #         avg_end = len(line)
+                        #     hr_str = line[avg_start:avg_end]
+
+                        #     try:
+                        #         hr = float(hr_str)
+                        #         if 40 <= hr <= 180:
+                        #             hr_values.append(hr)
+                        #     except:
+                        #         pass
+
+                        #     # Get temperature
+                        # if "To=" in line:
+                        #     temp_start = line.find("To=") + 3
+                        #     temp_end = line.find(" ", temp_start)
+                        #     if temp_end == -1:
+                        #         temp_end = len(line)
+                        #     temp_str = line[temp_start:temp_end]
+
+                        #     if temp_str != "nan":
+                        #         try:
+                        #             temp = float(temp_str)
+                        #             if 30 <= temp <= 42:
+                        #                 temp_values.append(temp)
+                        #         except:
+                        #             pass
 
                     except:
                         pass
@@ -1199,138 +1219,89 @@ class App:
         self.log("[ARDUINO] Disconnected\n")
 
     def _serial_loop(self):
-        import statistics
-        import time
-
-        while not self.serial_stop.is_set():
-            try:
-                # Collect data for 10 seconds for maximum accuracy
+            import statistics
+            while not self.serial_stop.is_set():
+                # Initialize empty lists for this 10-second collection window
                 hr_values = []
                 temp_values = []
+                
                 start_time = time.time()
-
-                print(f"[SENSOR] Starting 10-second data collection...")
-
-                # Collect data for 10 seconds
-                collection_time = 10.0
-                while (time.time() - start_time < collection_time and
-                       not self.serial_stop.is_set()):
-
-                    if self.ser.in_waiting:
+                # 1. COLLECTION PHASE (Run for 10 seconds)
+                while time.time() - start_time < 10:
+                    if self.serial_stop.is_set(): break
+                    
+                    if self.ser and self.ser.is_open:
                         try:
                             line = self.ser.readline().decode(errors='ignore').strip()
-                            if not line:
-                                continue
+                            if not line: continue
 
-                            # Only process if finger is detected
-                            if "Finger=YES" in line and "Avg=" in line:
+                            hr_found = None
+                            temp_found = None
 
-                                # --- Extract Heart Rate ---
+                            # --- ROBUST PARSING ---
+                            # A. Try CSV Parsing (BPM,Temp)
+                            if "," in line and "Finger=" not in line:
+                                parts = line.split(",")
+                                if len(parts) >= 2:
+                                    try:
+                                        hr_found = float(parts[0])
+                                        temp_found = float(parts[1])
+                                    except ValueError: pass
+
+                            # B. Try Fallback Parsing (Debug String)
+                            if hr_found is None or temp_found is None:
                                 if "Avg=" in line:
-                                    # Find the Avg= value
                                     avg_idx = line.find("Avg=")
-                                    if avg_idx != -1:
-                                        # Get substring starting after "Avg="
-                                        substr = line[avg_idx + 4:]
-                                        # Find end of number (space or end of line)
-                                        space_idx = substr.find(" ")
-                                        if space_idx == -1:
-                                            hr_str = substr
-                                        else:
-                                            hr_str = substr[:space_idx]
-
-                                        try:
-                                            hr = float(hr_str)
-                                            # Validate HR range
-                                            if 40 <= hr <= 180:  # Reasonable HR range
-                                                hr_values.append(hr)
-                                                # Optional: Show progress
-                                                elapsed = time.time() - start_time
-                                                print(
-                                                    f"[SENSOR] Sample {len(hr_values)}: HR={hr:.0f} ({elapsed:.1f}s/{collection_time}s)")
-                                        except ValueError:
-                                            pass
-
-                                # --- Extract Temperature ---
+                                    try: hr_found = float(line[avg_idx+4:].split(' ')[0])
+                                    except: pass
                                 if "To=" in line:
                                     to_idx = line.find("To=")
-                                    if to_idx != -1:
-                                        substr = line[to_idx + 3:]
-                                        space_idx = substr.find(" ")
-                                        if space_idx == -1:
-                                            temp_str = substr
-                                        else:
-                                            temp_str = substr[:space_idx]
+                                    try: temp_found = float(line[to_idx+3:].split(' ')[0])
+                                    except: pass
 
-                                        if temp_str != "nan":
-                                            try:
-                                                temp = float(temp_str)
-                                                # Validate temperature range
-                                                if 30 <= temp <= 42:  # Reasonable body temp
-                                                    temp_values.append(temp)
-                                            except ValueError:
-                                                pass
+                            # Store valid data into lists for statistical analysis
+                            if hr_found is not None and 30 <= hr_found <= 220:
+                                hr_values.append(hr_found)
+                                # Update immediate GUI preview
+                                self.hr_manual_var.set(f"{hr_found:.1f}")
+                            
+                            if temp_found is not None and 30 <= temp_found <= 45:
+                                temp_values.append(temp_found)
+                                # Update immediate GUI preview
+                                self.temp_manual_var.set(f"{temp_found:.1f}")
 
                         except Exception as e:
-                            print(f"[SENSOR] Parse error: {e}")
-                            continue
+                            print(f"Serial Read Error: {e}")
+                    
+                    time.sleep(0.1) # Small sleep to prevent CPU spiking
 
-                    # Small delay to prevent CPU overuse
-                    time.sleep(0.05)
+                # 2. CALCULATION PHASE (After 10 seconds of data gathering)
+                if self.serial_stop.is_set(): break
 
-                # --- After 10 seconds: Calculate and Update ---
                 print(f"[SENSOR] Collection complete. Got {len(hr_values)} HR samples, {len(temp_values)} temp samples")
 
-                if len(hr_values) >= 15:  # Need at least 15 samples (1.5 per second)
-                    # Calculate statistics
+                if len(hr_values) >= 15:
                     hr_avg = statistics.mean(hr_values)
-                    hr_median = statistics.median(hr_values)
                     hr_std = statistics.stdev(hr_values) if len(hr_values) > 1 else 0
-
-                    # Use median if data is noisy (high standard deviation)
-                    if hr_std > 10:
-                        print(f"[SENSOR] Data noisy (std={hr_std:.1f}), using median")
-                        final_hr = hr_median
-                    else:
-                        final_hr = hr_avg
-
-                    # Update HR textbox
+                    
+                    # If data is shaky, use median; otherwise use mean
+                    final_hr = statistics.median(hr_values) if hr_std > 10 else hr_avg
+                    
                     self.hr_manual_var.set(f"{final_hr:.0f}")
                     self.hr_value = final_hr
+                    self.log(f"[SENSOR] HR Finalized: {final_hr:.0f}bpm")
 
-                    print(f"[SENSOR] HR: {final_hr:.0f}bpm (Avg:{hr_avg:.0f}, Med:{hr_median:.0f}, Std:{hr_std:.1f})")
-                    self.log(f"[SENSOR] HR updated: {final_hr:.0f}bpm (from {len(hr_values)} samples)")
-
-                    # Update temperature if we have enough samples
-                    if len(temp_values) >= 8:  # Need at least 8 temperature samples
-                        temp_avg = statistics.mean(temp_values)
-                        temp_median = statistics.median(temp_values)
-
-                        # Use median for temperature too
-                        final_temp = temp_median if abs(temp_avg - temp_median) > 0.5 else temp_avg
-
+                    if len(temp_values) >= 8:
+                        final_temp = statistics.median(temp_values)
                         self.temp_manual_var.set(f"{final_temp:.1f}")
                         self.temp_value = final_temp
+                        self.log(f"[SENSOR] Temp Finalized: {final_temp:.1f}°C")
 
-                        print(f"[SENSOR] Temp: {final_temp:.1f}°C")
-                        self.log(f"[SENSOR] Temp updated: {final_temp:.1f}°C")
-                    else:
-                        print(f"[SENSOR] Not enough temp samples ({len(temp_values)}), keeping previous value")
-
-                else:
-                    print(f"[SENSOR] Not enough HR samples ({len(hr_values)}), waiting...")
-                    self.log(f"[SENSOR] Insufficient data: only {len(hr_values)} HR samples")
-
-                # Wait 30 seconds before next measurement (don't update too frequently)
-                print("[SENSOR] Waiting 30 seconds before next measurement...")
-                for i in range(30):
-                    if self.serial_stop.is_set():
-                        break
+                # 3. COOLDOWN PHASE (Wait 30 seconds)
+                print("[SENSOR] Waiting 30s for next reading...")
+                for _ in range(30):
+                    if self.serial_stop.is_set(): break
                     time.sleep(1)
-
-            except Exception as e:
-                print(f"[SENSOR] Major error: {e}")
-                time.sleep(5)  # Wait 5 seconds on major error
     # Camera Section
     def start_camera(self):
         if self.camera_running:
