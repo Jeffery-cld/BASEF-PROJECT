@@ -1,4 +1,4 @@
-#BASEF Software Section
+# BASEF Software Section
 
 import time
 import threading
@@ -15,94 +15,147 @@ from PIL.ImageChops import screen
 
 try:
     import serial
+
     SERIAL_OK = True
 except Exception:
     SERIAL_OK = False
 
-#Settings
+# Settings
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-#Nutrition database
-#Everything in per 100g
+# Nutrition database
+# Everything in per 100g
 # Food Nutrition Dataset organized by categories
 # Junk Foods
 junk_foods = {
-    "pancakes": dict(carbs=35.32, sugar=7.05, fat=12.07, sat_fat=3.1, fiber=2.1, protein=7.41, calories=282, sodium=508, potassium=174, magnesium=20, water=42.43, glycemic_index=68, caffeine=0),
-    "pizza": dict(carbs=23.5, sugar=2.27, fat=9.09, sat_fat=4.1, fiber=0.8, protein=6.82, calories=220, sodium=402, potassium=0, magnesium=0, water=0, glycemic_index=60, caffeine=0),
-    "tacos": dict(carbs=15.1, sugar=0, fat=9.17, sat_fat=3.3, fiber=3, protein=6.69, calories=170, sodium=363, potassium=229, magnesium=27, water=67.3, glycemic_index=60, caffeine=0),
-    "french_fries": dict(carbs=22.6, sugar=1.19, fat=8.33, sat_fat=1.3, fiber=2.4, protein=2.38, calories=179, sodium=48, potassium=0, magnesium=0, water=0, glycemic_index=75, caffeine=0),
-    "hot_dog": dict(carbs=3, sugar=0, fat=25, sat_fat=9.0, fiber=0, protein=34, calories=370, sodium=1137, potassium=0, magnesium=0, water=0, glycemic_index=70, caffeine=0),
-    "hamburger": dict(carbs=20.38, sugar=1.53, fat=16.06, sat_fat=6.2, fiber=1.4, protein=16.86, calories=299, sodium=440, potassium=230, magnesium=20, water=44.71, glycemic_index=44, caffeine=0),
-    "noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=67, caffeine=0),
-    "spaghetti": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=50, caffeine=0),
-    "instant_noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=49, caffeine=0)
+    "pancakes": dict(carbs=35.32, sugar=7.05, fat=12.07, sat_fat=3.1, fiber=2.1, protein=7.41, calories=282, sodium=508,
+                     potassium=174, magnesium=20, water=42.43, glycemic_index=68, caffeine=0),
+    "pizza": dict(carbs=23.5, sugar=2.27, fat=9.09, sat_fat=4.1, fiber=0.8, protein=6.82, calories=220, sodium=402,
+                  potassium=0, magnesium=0, water=0, glycemic_index=60, caffeine=0),
+    "tacos": dict(carbs=15.1, sugar=0, fat=9.17, sat_fat=3.3, fiber=3, protein=6.69, calories=170, sodium=363,
+                  potassium=229, magnesium=27, water=67.3, glycemic_index=60, caffeine=0),
+    "french_fries": dict(carbs=22.6, sugar=1.19, fat=8.33, sat_fat=1.3, fiber=2.4, protein=2.38, calories=179,
+                         sodium=48, potassium=0, magnesium=0, water=0, glycemic_index=75, caffeine=0),
+    "hot_dog": dict(carbs=3, sugar=0, fat=25, sat_fat=9.0, fiber=0, protein=34, calories=370, sodium=1137, potassium=0,
+                    magnesium=0, water=0, glycemic_index=70, caffeine=0),
+    "hamburger": dict(carbs=20.38, sugar=1.53, fat=16.06, sat_fat=6.2, fiber=1.4, protein=16.86, calories=299,
+                      sodium=440, potassium=230, magnesium=20, water=44.71, glycemic_index=44, caffeine=0),
+    "noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236,
+                    potassium=38, magnesium=21, water=67.33, glycemic_index=67, caffeine=0),
+    "spaghetti": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137, sodium=236,
+                      potassium=38, magnesium=21, water=67.33, glycemic_index=50, caffeine=0),
+    "instant_noodles": dict(carbs=25.01, sugar=0.4, fat=2.06, sat_fat=0.4, fiber=1.2, protein=4.51, calories=137,
+                            sodium=236, potassium=38, magnesium=21, water=67.33, glycemic_index=49, caffeine=0)
 }
 
 # Meats
 meats = {
-    "steak": dict(carbs=7.14, sugar=3.57, fat=3.57, sat_fat=1.4, fiber=0, protein=42.9, calories=214, sodium=9821, potassium=0, magnesium=0, water=0, glycemic_index=52, caffeine=0),
-    "braised_pork": dict(carbs=0, sugar=0, fat=9.51, sat_fat=3.3, fiber=0, protein=12.1, calories=138, sodium=91, potassium=195, magnesium=12, water=75.9, glycemic_index=76, caffeine=0),
-    "braised_duck": dict(carbs=0, sugar=0, fat=39.3, sat_fat=13.8, fiber=0, protein=11.5, calories=404, sodium=63, potassium=209, magnesium=15, water=48.5, glycemic_index=60, caffeine=0),
-    "grilled_salmon": dict(carbs=0.86, sugar=0, fat=3.45, sat_fat=0.7, fiber=0, protein=18.1, calories=103, sodium=190, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
-    "fried_chicken": dict(carbs=9.52, sugar=1.19, fat=17.9, sat_fat=4.5, fiber=0, protein=13.1, calories=326, sodium=726, potassium=119, magnesium=0, water=0, glycemic_index=0, caffeine=0),
-    "chicken_curry": dict(carbs=6.54, sugar=2.56, fat=6.48, sat_fat=2.1, fiber=1.4, protein=6.48, calories=107, sodium=376, potassium=280, magnesium=18, water=79, glycemic_index=0, caffeine=0),
-    "sashimi": dict(carbs=4.08, sugar=0, fat=0.34, sat_fat=0.08, fiber=0, protein=19.7, calories=102, sodium=252, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
-    "sushi": dict(carbs=18.39, sugar=2.13, fat=0.67, sat_fat=0.18, fiber=1, protein=2.92, calories=94, sodium=428, potassium=48, magnesium=13, water=76.37, glycemic_index=50, caffeine=0),
-    "bacon": dict(carbs=1.4, sugar=0, fat=34.4, sat_fat=11.9, fiber=0, protein=31.3, calories=449, sodium=1500, potassium=412, magnesium=27, water=26.2, glycemic_index=0, caffeine=0)
+    "steak": dict(carbs=7.14, sugar=3.57, fat=3.57, sat_fat=1.4, fiber=0, protein=42.9, calories=214, sodium=9821,
+                  potassium=0, magnesium=0, water=0, glycemic_index=52, caffeine=0),
+    "braised_pork": dict(carbs=0, sugar=0, fat=9.51, sat_fat=3.3, fiber=0, protein=12.1, calories=138, sodium=91,
+                         potassium=195, magnesium=12, water=75.9, glycemic_index=76, caffeine=0),
+    "braised_duck": dict(carbs=0, sugar=0, fat=39.3, sat_fat=13.8, fiber=0, protein=11.5, calories=404, sodium=63,
+                         potassium=209, magnesium=15, water=48.5, glycemic_index=60, caffeine=0),
+    "grilled_salmon": dict(carbs=0.86, sugar=0, fat=3.45, sat_fat=0.7, fiber=0, protein=18.1, calories=103, sodium=190,
+                           potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "fried_chicken": dict(carbs=9.52, sugar=1.19, fat=17.9, sat_fat=4.5, fiber=0, protein=13.1, calories=326,
+                          sodium=726, potassium=119, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "chicken_curry": dict(carbs=6.54, sugar=2.56, fat=6.48, sat_fat=2.1, fiber=1.4, protein=6.48, calories=107,
+                          sodium=376, potassium=280, magnesium=18, water=79, glycemic_index=0, caffeine=0),
+    "sashimi": dict(carbs=4.08, sugar=0, fat=0.34, sat_fat=0.08, fiber=0, protein=19.7, calories=102, sodium=252,
+                    potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "sushi": dict(carbs=18.39, sugar=2.13, fat=0.67, sat_fat=0.18, fiber=1, protein=2.92, calories=94, sodium=428,
+                  potassium=48, magnesium=13, water=76.37, glycemic_index=50, caffeine=0),
+    "bacon": dict(carbs=1.4, sugar=0, fat=34.4, sat_fat=11.9, fiber=0, protein=31.3, calories=449, sodium=1500,
+                  potassium=412, magnesium=27, water=26.2, glycemic_index=0, caffeine=0)
 }
 
 # Fruits
 fruits = {
-    "banana": dict(carbs=22.71, sugar=15.8, fat=0.28, sat_fat=0.1, fiber=1.7, protein=0.74, calories=97, sodium=0, potassium=326, magnesium=28, water=75.6, glycemic_index=0, caffeine=0),
-    "apple": dict(carbs=14.8, sugar=12.08, fat=0.15, sat_fat=0.03, fiber=2.1, protein=0.17, calories=61, sodium=0, potassium=104, magnesium=5, water=84.62, glycemic_index=54, caffeine=0),
-    "pineapple": dict(carbs=14.09, sugar=11.42, fat=0.21, sat_fat=0.02, fiber=0.9, protein=0.46, calories=60, sodium=0, potassium=137, magnesium=13, water=84.99, glycemic_index=59, caffeine=0),
-    "pears": dict(carbs=15.18, sugar=9.73, fat=0.15, sat_fat=0.03, fiber=3.1, protein=0.37, calories=59, sodium=3, potassium=104, magnesium=7, water=84.02, glycemic_index=38, caffeine=0),
-    "grape": dict(carbs=19.4, sugar=16.74, fat=0.2, sat_fat=0.05, fiber=0.9, protein=0.9, calories=83, sodium=5, potassium=224, magnesium=8, water=79.04, glycemic_index=53, caffeine=0),
-    "orange": dict(carbs=11.78, sugar=8.96, fat=0.14, sat_fat=0.02, fiber=2.2, protein=0.92, calories=50, sodium=4, potassium=174, magnesium=10, water=86.72, glycemic_index=0, caffeine=0),
-    "watermelon": dict(carbs=7.55, sugar=6.2, fat=0.15, sat_fat=0.02, fiber=0.4, protein=0.61, calories=30, sodium=1, potassium=112, magnesium=10, water=91.45, glycemic_index=72, caffeine=0),
-    "strawberry": dict(carbs=7.96, sugar=4.86, fat=0.22, sat_fat=0.02, fiber=1.8, protein=0.64, calories=36, sodium=0, potassium=161, magnesium=13, water=90.83, glycemic_index=40, caffeine=0),
-    "lemon": dict(carbs=9.32, sugar=2.5, fat=0.3, sat_fat=0.04, fiber=2.8, protein=1.1, calories=29, sodium=2, potassium=138, magnesium=8, water=88.98, glycemic_index=20, caffeine=0),
-    "papaya": dict(carbs=10.8, sugar=7.82, fat=0.26, sat_fat=0.06, fiber=1.7, protein=0.47, calories=43, sodium=8, potassium=182, magnesium=21, water=88.1, glycemic_index=59, caffeine=0)
+    "banana": dict(carbs=22.71, sugar=15.8, fat=0.28, sat_fat=0.1, fiber=1.7, protein=0.74, calories=97, sodium=0,
+                   potassium=326, magnesium=28, water=75.6, glycemic_index=0, caffeine=0),
+    "apple": dict(carbs=14.8, sugar=12.08, fat=0.15, sat_fat=0.03, fiber=2.1, protein=0.17, calories=61, sodium=0,
+                  potassium=104, magnesium=5, water=84.62, glycemic_index=54, caffeine=0),
+    "pineapple": dict(carbs=14.09, sugar=11.42, fat=0.21, sat_fat=0.02, fiber=0.9, protein=0.46, calories=60, sodium=0,
+                      potassium=137, magnesium=13, water=84.99, glycemic_index=59, caffeine=0),
+    "pears": dict(carbs=15.18, sugar=9.73, fat=0.15, sat_fat=0.03, fiber=3.1, protein=0.37, calories=59, sodium=3,
+                  potassium=104, magnesium=7, water=84.02, glycemic_index=38, caffeine=0),
+    "grape": dict(carbs=19.4, sugar=16.74, fat=0.2, sat_fat=0.05, fiber=0.9, protein=0.9, calories=83, sodium=5,
+                  potassium=224, magnesium=8, water=79.04, glycemic_index=53, caffeine=0),
+    "orange": dict(carbs=11.78, sugar=8.96, fat=0.14, sat_fat=0.02, fiber=2.2, protein=0.92, calories=50, sodium=4,
+                   potassium=174, magnesium=10, water=86.72, glycemic_index=0, caffeine=0),
+    "watermelon": dict(carbs=7.55, sugar=6.2, fat=0.15, sat_fat=0.02, fiber=0.4, protein=0.61, calories=30, sodium=1,
+                       potassium=112, magnesium=10, water=91.45, glycemic_index=72, caffeine=0),
+    "strawberry": dict(carbs=7.96, sugar=4.86, fat=0.22, sat_fat=0.02, fiber=1.8, protein=0.64, calories=36, sodium=0,
+                       potassium=161, magnesium=13, water=90.83, glycemic_index=40, caffeine=0),
+    "lemon": dict(carbs=9.32, sugar=2.5, fat=0.3, sat_fat=0.04, fiber=2.8, protein=1.1, calories=29, sodium=2,
+                  potassium=138, magnesium=8, water=88.98, glycemic_index=20, caffeine=0),
+    "papaya": dict(carbs=10.8, sugar=7.82, fat=0.26, sat_fat=0.06, fiber=1.7, protein=0.47, calories=43, sodium=8,
+                   potassium=182, magnesium=21, water=88.1, glycemic_index=59, caffeine=0)
 }
 
 # Vegetables
 vegetables = {
-    "salad": dict(carbs=17.8, sugar=11.3, fat=3.03, sat_fat=0.6, fiber=1.71, protein=1.73, calories=99.3, sodium=117, potassium=0, magnesium=0, water=0, glycemic_index=74, caffeine=0),
-    "vegetable_soup": dict(carbs=9.17, sugar=3.75, fat=0.21, sat_fat=0.04, fiber=1.2, protein=1.67, calories=46, sodium=333, potassium=138, magnesium=0, water=0, glycemic_index=25, caffeine=0),
-    "corn": dict(carbs=18.7, sugar=6.26, fat=1.35, sat_fat=0.2, fiber=2, protein=3.27, calories=86, sodium=15, potassium=270, magnesium=37, water=76.05, glycemic_index=60, caffeine=0),
-    "broccoli": dict(carbs=6.27, sugar=1.4, fat=0.34, sat_fat=0.04, fiber=2.4, protein=2.57, calories=39, sodium=36, potassium=303, magnesium=21, water=90, glycemic_index=15, caffeine=0),
-    "tomato": dict(carbs=4.04, sugar=2.63, fat=0.31, sat_fat=0.04, fiber=1.2, protein=0.82, calories=20, sodium=4, potassium=226, magnesium=10, water=94.38, glycemic_index=48, caffeine=0),
-    "potato": dict(carbs=12.4, sugar=0, fat=0.1, sat_fat=0.03, fiber=2.5, protein=2.57, calories=58, sodium=10, potassium=413, magnesium=23, water=83.3, glycemic_index=54, caffeine=0),
-    "cabbage": dict(carbs=5.8, sugar=3.2, fat=0.1, sat_fat=0.02, fiber=2.5, protein=1.28, calories=25, sodium=18, potassium=170, magnesium=12, water=92.2, glycemic_index=13, caffeine=0),
-    "onions": dict(carbs=8.46, sugar=5.8, fat=0.08, sat_fat=0.02, fiber=1.7, protein=0.86, calories=38, sodium=1, potassium=171, magnesium=9, water=90.31, glycemic_index=15, caffeine=0),
-    "lettuce": dict(carbs=3.69, sugar=1.1, fat=0.1, sat_fat=0.02, fiber=1.3, protein=0.92, calories=20, sodium=23, potassium=249, magnesium=11, water=94.71, glycemic_index=92, caffeine=0),
-    "cucumbers": dict(carbs=3.8, sugar=1.69, fat=0, sat_fat=0, fiber=0.4, protein=0.84, calories=15, sodium=2, potassium=148, magnesium=0, water=0, glycemic_index=13, caffeine=0)
+    "salad": dict(carbs=17.8, sugar=11.3, fat=3.03, sat_fat=0.6, fiber=1.71, protein=1.73, calories=99.3, sodium=117,
+                  potassium=0, magnesium=0, water=0, glycemic_index=74, caffeine=0),
+    "vegetable_soup": dict(carbs=9.17, sugar=3.75, fat=0.21, sat_fat=0.04, fiber=1.2, protein=1.67, calories=46,
+                           sodium=333, potassium=138, magnesium=0, water=0, glycemic_index=25, caffeine=0),
+    "corn": dict(carbs=18.7, sugar=6.26, fat=1.35, sat_fat=0.2, fiber=2, protein=3.27, calories=86, sodium=15,
+                 potassium=270, magnesium=37, water=76.05, glycemic_index=60, caffeine=0),
+    "broccoli": dict(carbs=6.27, sugar=1.4, fat=0.34, sat_fat=0.04, fiber=2.4, protein=2.57, calories=39, sodium=36,
+                     potassium=303, magnesium=21, water=90, glycemic_index=15, caffeine=0),
+    "tomato": dict(carbs=4.04, sugar=2.63, fat=0.31, sat_fat=0.04, fiber=1.2, protein=0.82, calories=20, sodium=4,
+                   potassium=226, magnesium=10, water=94.38, glycemic_index=48, caffeine=0),
+    "potato": dict(carbs=12.4, sugar=0, fat=0.1, sat_fat=0.03, fiber=2.5, protein=2.57, calories=58, sodium=10,
+                   potassium=413, magnesium=23, water=83.3, glycemic_index=54, caffeine=0),
+    "cabbage": dict(carbs=5.8, sugar=3.2, fat=0.1, sat_fat=0.02, fiber=2.5, protein=1.28, calories=25, sodium=18,
+                    potassium=170, magnesium=12, water=92.2, glycemic_index=13, caffeine=0),
+    "onions": dict(carbs=8.46, sugar=5.8, fat=0.08, sat_fat=0.02, fiber=1.7, protein=0.86, calories=38, sodium=1,
+                   potassium=171, magnesium=9, water=90.31, glycemic_index=15, caffeine=0),
+    "lettuce": dict(carbs=3.69, sugar=1.1, fat=0.1, sat_fat=0.02, fiber=1.3, protein=0.92, calories=20, sodium=23,
+                    potassium=249, magnesium=11, water=94.71, glycemic_index=92, caffeine=0),
+    "cucumbers": dict(carbs=3.8, sugar=1.69, fat=0, sat_fat=0, fiber=0.4, protein=0.84, calories=15, sodium=2,
+                      potassium=148, magnesium=0, water=0, glycemic_index=13, caffeine=0)
 }
 
 # Dessert
 dessert = {
-    "ice_cream": dict(carbs=24.6, sugar=21.5, fat=10.8, sat_fat=6.8, fiber=0, protein=3.08, calories=200, sodium=54, potassium=185, magnesium=0, water=0, glycemic_index=13, caffeine=0),
-    "cheesecake": dict(carbs=35.2, sugar=19.6, fat=20.4, sat_fat=12.4, fiber=1.6, protein=4.7, calories=337, sodium=196, potassium=96, magnesium=0, water=0, glycemic_index=10, caffeine=0),
-    "donuts": dict(carbs=61.4, sugar=42.1, fat=17.5, sat_fat=8.9, fiber=1.8, protein=3.51, calories=404, sodium=351, potassium=0, magnesium=0, water=0, glycemic_index=15, caffeine=0),
-    "pudding": dict(carbs=21, sugar=20, fat=0, sat_fat=0, fiber=0, protein=0, calories=86, sodium=10, potassium=0, magnesium=0, water=0, glycemic_index=61, caffeine=0),
-    "apple_pie": dict(carbs=54, sugar=27.4, fat=15, sat_fat=6.9, fiber=1.8, protein=1.77, calories=354, sodium=150, potassium=0, magnesium=0, water=0, glycemic_index=58, caffeine=0),
-    "croissant": dict(carbs=45.8, sugar=11.26, fat=21, sat_fat=11.0, fiber=2.6, protein=8.2, calories=406, sodium=300, potassium=118, magnesium=16, water=23.2, glycemic_index=76, caffeine=0),
-    "toast": dict(carbs=76.6, sugar=0.94, fat=3.2, sat_fat=0.7, fiber=6.3, protein=12.1, calories=390, sodium=598, potassium=202, magnesium=59, water=5.1, glycemic_index=65, caffeine=0),
-    "waffles": dict(carbs=69.43, sugar=8.16, fat=14.29, sat_fat=3.1, fiber=2, protein=4.09, calories=429, sodium=714, potassium=0, magnesium=0, water=0, glycemic_index=63, caffeine=0)
+    "ice_cream": dict(carbs=24.6, sugar=21.5, fat=10.8, sat_fat=6.8, fiber=0, protein=3.08, calories=200, sodium=54,
+                      potassium=185, magnesium=0, water=0, glycemic_index=13, caffeine=0),
+    "cheesecake": dict(carbs=35.2, sugar=19.6, fat=20.4, sat_fat=12.4, fiber=1.6, protein=4.7, calories=337, sodium=196,
+                       potassium=96, magnesium=0, water=0, glycemic_index=10, caffeine=0),
+    "donuts": dict(carbs=61.4, sugar=42.1, fat=17.5, sat_fat=8.9, fiber=1.8, protein=3.51, calories=404, sodium=351,
+                   potassium=0, magnesium=0, water=0, glycemic_index=15, caffeine=0),
+    "pudding": dict(carbs=21, sugar=20, fat=0, sat_fat=0, fiber=0, protein=0, calories=86, sodium=10, potassium=0,
+                    magnesium=0, water=0, glycemic_index=61, caffeine=0),
+    "apple_pie": dict(carbs=54, sugar=27.4, fat=15, sat_fat=6.9, fiber=1.8, protein=1.77, calories=354, sodium=150,
+                      potassium=0, magnesium=0, water=0, glycemic_index=58, caffeine=0),
+    "croissant": dict(carbs=45.8, sugar=11.26, fat=21, sat_fat=11.0, fiber=2.6, protein=8.2, calories=406, sodium=300,
+                      potassium=118, magnesium=16, water=23.2, glycemic_index=76, caffeine=0),
+    "toast": dict(carbs=76.6, sugar=0.94, fat=3.2, sat_fat=0.7, fiber=6.3, protein=12.1, calories=390, sodium=598,
+                  potassium=202, magnesium=59, water=5.1, glycemic_index=65, caffeine=0),
+    "waffles": dict(carbs=69.43, sugar=8.16, fat=14.29, sat_fat=3.1, fiber=2, protein=4.09, calories=429, sodium=714,
+                    potassium=0, magnesium=0, water=0, glycemic_index=63, caffeine=0)
 }
 
 # Caffeine
 caffeine = {
-    "tiramisu": dict(carbs=29.44, sugar=18.7, fat=23.86, sat_fat=13.5, fiber=0.6, protein=5.65, calories=353, sodium=173, potassium=150, magnesium=16, water=39.98, glycemic_index=67, caffeine=34),
-    "chocolate_cake": dict(carbs=57.6, sugar=43.9, fat=22.7, sat_fat=10.5, fiber=1.5, protein=3.03, calories=439, sodium=348, potassium=0, magnesium=0, water=0, glycemic_index=73, caffeine=6),
-    "coffee": dict(carbs=0.32, sugar=0, fat=0, sat_fat=0, fiber=0, protein=0, calories=1, sodium=0, potassium=0, magnesium=0, water=0, glycemic_index=76, caffeine=40)
+    "tiramisu": dict(carbs=29.44, sugar=18.7, fat=23.86, sat_fat=13.5, fiber=0.6, protein=5.65, calories=353,
+                     sodium=173, potassium=150, magnesium=16, water=39.98, glycemic_index=67, caffeine=34),
+    "chocolate_cake": dict(carbs=57.6, sugar=43.9, fat=22.7, sat_fat=10.5, fiber=1.5, protein=3.03, calories=439,
+                           sodium=348, potassium=0, magnesium=0, water=0, glycemic_index=73, caffeine=6),
+    "coffee": dict(carbs=0.32, sugar=0, fat=0, sat_fat=0, fiber=0, protein=0, calories=1, sodium=0, potassium=0,
+                   magnesium=0, water=0, glycemic_index=76, caffeine=40)
 }
 
 # Staple Food
 staple_food = {
-    "fried_rice": dict(carbs=31.7, sugar=0.83, fat=5, sat_fat=1.1, fiber=1.7, protein=3.33, calories=183, sodium=500, potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
-    "dumplings": dict(carbs=23.7, sugar=1.32, fat=1.97, sat_fat=0.5, fiber=1.3, protein=9.21, calories=145, sodium=342, potassium=0, magnesium=0, water=0, glycemic_index=70, caffeine=0),
-    "white_rice": dict(carbs=20.97, sugar=0.05, fat=0.19, sat_fat=0.05, fiber=1, protein=2.01, calories=96, sodium=227, potassium=10, magnesium=5, water=76.19, glycemic_index=60, caffeine=0),
+    "fried_rice": dict(carbs=31.7, sugar=0.83, fat=5, sat_fat=1.1, fiber=1.7, protein=3.33, calories=183, sodium=500,
+                       potassium=0, magnesium=0, water=0, glycemic_index=0, caffeine=0),
+    "dumplings": dict(carbs=23.7, sugar=1.32, fat=1.97, sat_fat=0.5, fiber=1.3, protein=9.21, calories=145, sodium=342,
+                      potassium=0, magnesium=0, water=0, glycemic_index=70, caffeine=0),
+    "white_rice": dict(carbs=20.97, sugar=0.05, fat=0.19, sat_fat=0.05, fiber=1, protein=2.01, calories=96, sodium=227,
+                       potassium=10, magnesium=5, water=76.19, glycemic_index=60, caffeine=0),
 }
 
 # All categories combined (for easy access)
@@ -132,7 +185,6 @@ CATEGORY_LABELS = {
 }
 CATEGORY_BY_LABEL = {v: k for k, v in CATEGORY_LABELS.items()}
 CATEGORY_DISPLAY = [CATEGORY_LABELS[k] for k in CATEGORIES]  # keep same order
-
 
 # Correct ALIASES to match actual foods
 ALIASES = {
@@ -192,11 +244,14 @@ ALIASES = {
     "espresso": "coffee",
     "latte": "coffee"
 }
+
+
 def normalize_food(name: str) -> str:
     raw = str(name).strip().lower()
     if raw in ALIASES:
         return ALIASES[raw]
     return raw.replace(" ", "_")
+
 
 # Validation
 def validate_age(x):
@@ -206,6 +261,7 @@ def validate_age(x):
     except Exception:
         return False, None
 
+
 def validate_gender(x):
     g = str(x).strip().lower()
     if g in ("male", "m"):
@@ -214,12 +270,14 @@ def validate_gender(x):
         return True, "female"
     return False, None
 
+
 def validate_stress(x):
     try:
         v = int(float(x))
         return (1 <= v <= 10), v
     except Exception:
         return False, None
+
 
 def validate_c_value(x):
     try:
@@ -228,6 +286,7 @@ def validate_c_value(x):
     except Exception:
         return False, None
 
+
 def validate_portion(x):
     try:
         v = float(x)
@@ -235,12 +294,14 @@ def validate_portion(x):
     except Exception:
         return False, None
 
+
 def validate_hours_since_meal(x):
     try:
         v = float(x)
         return (0 <= v <= 24), v
     except Exception:
         return False, None
+
 
 def validate_hours_food2(x):
     try:
@@ -257,6 +318,7 @@ def validate_hr(x):
     except Exception:
         return False, None
 
+
 def validate_temp(x):
     try:
         v = float(x)
@@ -264,12 +326,14 @@ def validate_temp(x):
     except Exception:
         return False, None
 
+
 def validate_sleep_pressure(x):
     try:
         v = float(x)
         return (0.0 <= v <= 10.0), v
     except Exception:
         return False, None
+
 
 def validate_weight_kg(x):
     try:
@@ -294,6 +358,7 @@ def get_h_value(hr):
     else:
         return 1.25
 
+
 def get_b_value(temp):
     if temp < 36.0:
         return 0.95
@@ -304,9 +369,11 @@ def get_b_value(temp):
     else:
         return 1.10
 
+
 def get_s_value(gender):
     g = str(gender).strip().lower()
     return 1.05 if g in ("female", "f") else 1.00
+
 
 def get_c_value(bluelight):
     # screen time before bed (hours): 0 - 2
@@ -318,6 +385,7 @@ def get_c_value(bluelight):
         return 1.12
     else:
         return 1.15
+
 
 def get_t_value(stress_level):
     s = max(1, min(10, int(stress_level)))
@@ -340,6 +408,7 @@ def get_t_value(stress_level):
     else:
         return 1.24
 
+
 def get_age_baseline(age):
     if age <= 19:
         return 5
@@ -350,11 +419,13 @@ def get_age_baseline(age):
     else:
         return 5
 
+
 def get_meal_timing_penalty(hours_since_meal):
     # Continuous exponential decay penalty instead of step cutoffs.
     # Max penalty ~15 min right after eating, decays with tau = 2.5 hours.
     t = max(0.0, float(hours_since_meal))
     return 15.0 * math.exp(-t / 2.5)
+
 
 def get_portion_multiplier(portion_grams):
     if portion_grams <= 200:
@@ -364,6 +435,7 @@ def get_portion_multiplier(portion_grams):
     else:
         return 1.5
 
+
 def format_macros(info):
     return (
         f"C{info.get('carbs', 0)}, S{info.get('sugar', 0)}, F{info.get('fat', 0)}, "
@@ -372,11 +444,13 @@ def format_macros(info):
         f"Mg{info.get('magnesium', 0)}, Me{info.get('melatonin', 0)}"
     )
 
+
 def get_sleep_pressure_multiplier(sleep_pressure):
     p = float(sleep_pressure)
     if p < 0: p = 0.0
     if p > 10: p = 10.0
     return round(1.2 - (p / 10.0) * 0.4, 3)
+
 
 def calculate_glycemic_effect(food_name, carb_grams, fiber_grams, hours_before_bed):
     key = normalize_food(food_name)
@@ -416,6 +490,7 @@ def calculate_glycemic_effect(food_name, carb_grams, fiber_grams, hours_before_b
         "effect_minutes": round(effect, 1),
         "timing_factor": tf
     }
+
 
 def calculate_caffeine_effect(food_name, portion_grams, hours_since_ingestion, body_weight_kg=70.0):
     key = normalize_food(food_name)
@@ -488,9 +563,11 @@ def food_effect_score(food_name, portion_grams):
 
     # Apply new SOL formula
     sol = (0 * calories) + (0.03 * carbs) + (0.08 * sugar) + (0.19 * fat) + (0.20 * saturated_fat) \
-          - (0.50 * fiber) + (0.05 * protein) + (0.001 * sodium) - (0.001 * potassium) - (0.0018 * magnesium) + (0.8 * info.get("caffeine", 0))+(0 * water)
+          - (0.50 * fiber) + (0.05 * protein) + (0.001 * sodium) - (0.001 * potassium) - (0.0018 * magnesium) + (
+                      0.8 * info.get("caffeine", 0)) + (0 * water)
 
     return sol, info
+
 
 def calc_sld_one(food_name, hr, temp, age, gender, stress, portion_grams,
                  hours_since_meal, bluelight, sleep_pressure=5.0, body_weight_kg=70.0):
@@ -551,7 +628,7 @@ def calc_sld_one(food_name, hr, temp, age, gender, stress, portion_grams,
 
 def calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age,
                  gender, stress, bluelight, sleep_pressure=5.0, body_weight_kg=70.0):
-#Complete scientific SOL prediction for two foods
+    # Complete scientific SOL prediction for two foods
 
     d1, info1, dbg1 = calc_sld_one(food1, hr, temp, age, gender, stress, grams1, h1,
                                    bluelight, sleep_pressure, body_weight_kg)
@@ -622,6 +699,7 @@ def calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age,
 
     return float(np.round(sld_total, 2)), (info1, info2, debug)
 
+
 # Image recognition model setup
 print("Loading CLIP...")
 model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
@@ -633,6 +711,7 @@ with torch.no_grad():
     text_features = model.encode_text(text)
     text_features /= text_features.norm(dim=-1, keepdim=True)
 print("CLIP set up successfully.")
+
 
 def classify_frame_bgr(frame_bgr, topk=3):
     rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -649,6 +728,7 @@ def classify_frame_bgr(frame_bgr, topk=3):
     idx = np.argsort(probs_np)[::-1][:topk]
     return [(FOODS[i], float(probs_np[i])) for i in idx], None
 
+
 def bin_age_group(age: int) -> str:
     if age <= 19:
         return "5-19"
@@ -659,6 +739,7 @@ def bin_age_group(age: int) -> str:
     else:
         return "60+"
 
+
 def bin_meal_timing(hours_since_meal: float) -> str:
     # Your bins: 6-4, 4-2, 0-2 (hours before bed)
     h = float(hours_since_meal)
@@ -668,6 +749,7 @@ def bin_meal_timing(hours_since_meal: float) -> str:
         return "4-2"
     else:
         return "0-2"
+
 
 def bin_sol(delay_min: float) -> str:
     d = float(delay_min)
@@ -680,6 +762,7 @@ def bin_sol(delay_min: float) -> str:
     else:
         return "45+"
 
+
 def get_recommendations_one_line(age: int, hours_since_meal: float, sol_min: float) -> str:
     ag = bin_age_group(age)
     mt = bin_meal_timing(hours_since_meal)
@@ -689,79 +772,85 @@ def get_recommendations_one_line(age: int, hours_since_meal: float, sol_min: flo
     # NOTE: general, non-diagnostic guidance (good for BASEF).
     rec = {
         # -------- 5-19 --------
-        ("5-19","6-4","0-15"): "Maintain routine; get 10–20 min morning outdoor light; avoid late caffeine.",
-        ("5-19","6-4","15-30"): "Keep wake time consistent; dim lights 60 min pre-bed; avoid added sugar late.",
-        ("5-19","6-4","30-45"): "Add 20–30 min wind-down; more morning light; move hard exercise earlier.",
-        ("5-19","6-4","45+"): "No screens 60–90 min pre-bed; fixed wake time; morning bright light exposure.",
+        ("5-19", "6-4", "0-15"): "Maintain routine; get 10–20 min morning outdoor light; avoid late caffeine.",
+        ("5-19", "6-4", "15-30"): "Keep wake time consistent; dim lights 60 min pre-bed; avoid added sugar late.",
+        ("5-19", "6-4", "30-45"): "Add 20–30 min wind-down; more morning light; move hard exercise earlier.",
+        ("5-19", "6-4", "45+"): "No screens 60–90 min pre-bed; fixed wake time; morning bright light exposure.",
 
-        ("5-19","4-2","0-15"): "No change needed; keep sleep duration sufficient; keep schedule stable.",
-        ("5-19","4-2","15-30"): "Reduce heavy/fatty dinner; dim lights; avoid sugary snacks late.",
-        ("5-19","4-2","30-45"): "Shift dinner earlier by ~1 h; use lighter snack if needed; reduce screens.",
-        ("5-19","4-2","45+"): "Strict screen curfew; earlier dinner; consistent bedtime routine (same steps nightly).",
+        ("5-19", "4-2", "0-15"): "No change needed; keep sleep duration sufficient; keep schedule stable.",
+        ("5-19", "4-2", "15-30"): "Reduce heavy/fatty dinner; dim lights; avoid sugary snacks late.",
+        ("5-19", "4-2", "30-45"): "Shift dinner earlier by ~1 h; use lighter snack if needed; reduce screens.",
+        ("5-19", "4-2",
+         "45+"): "Strict screen curfew; earlier dinner; consistent bedtime routine (same steps nightly).",
 
-        ("5-19","0-2","0-15"): "Monitor only; try not to eat closer than 2 h to bed consistently.",
-        ("5-19","0-2","15-30"): "Smaller portion; avoid spicy/high-fat foods; dim lights now.",
-        ("5-19","0-2","30-45"): "Avoid food within 2 h; small low-fat snack only; do calm breathing 5–10 min.",
-        ("5-19","0-2","45+"): "No food within 2 h; no screens; morning light + fixed wake time to shift circadian delay.",
+        ("5-19", "0-2", "0-15"): "Monitor only; try not to eat closer than 2 h to bed consistently.",
+        ("5-19", "0-2", "15-30"): "Smaller portion; avoid spicy/high-fat foods; dim lights now.",
+        ("5-19", "0-2", "30-45"): "Avoid food within 2 h; small low-fat snack only; do calm breathing 5–10 min.",
+        ("5-19", "0-2",
+         "45+"): "No food within 2 h; no screens; morning light + fixed wake time to shift circadian delay.",
 
         # -------- 19-40 --------
-        ("19-40","6-4","0-15"): "Maintain routine; caffeine cutoff earlier afternoon; consistent wake time.",
-        ("19-40","6-4","15-30"): "Keep early dinner; reduce evening bright light; light wind-down routine.",
-        ("19-40","6-4","30-45"): "Reduce late caffeine/alcohol; add 10 min paced breathing; morning light.",
-        ("19-40","6-4","45+"): "Use CBT-I basics: stimulus control + consistent wake; remove late caffeine; morning light.",
+        ("19-40", "6-4", "0-15"): "Maintain routine; caffeine cutoff earlier afternoon; consistent wake time.",
+        ("19-40", "6-4", "15-30"): "Keep early dinner; reduce evening bright light; light wind-down routine.",
+        ("19-40", "6-4", "30-45"): "Reduce late caffeine/alcohol; add 10 min paced breathing; morning light.",
+        ("19-40", "6-4",
+         "45+"): "Use CBT-I basics: stimulus control + consistent wake; remove late caffeine; morning light.",
 
-        ("19-40","4-2","0-15"): "No change; keep dinner moderate; avoid caffeine late.",
-        ("19-40","4-2","15-30"): "Avoid heavy/fatty dinner; limit alcohol; dim lights.",
-        ("19-40","4-2","30-45"): "Shift dinner earlier; avoid sugar late; cool room and reduce screens.",
-        ("19-40","4-2","45+"): "Meal cutoff ≥2 h; CBT-I basics; strict caffeine cutoff; morning light.",
+        ("19-40", "4-2", "0-15"): "No change; keep dinner moderate; avoid caffeine late.",
+        ("19-40", "4-2", "15-30"): "Avoid heavy/fatty dinner; limit alcohol; dim lights.",
+        ("19-40", "4-2", "30-45"): "Shift dinner earlier; avoid sugar late; cool room and reduce screens.",
+        ("19-40", "4-2", "45+"): "Meal cutoff ≥2 h; CBT-I basics; strict caffeine cutoff; morning light.",
 
-        ("19-40","0-2","0-15"): "Try moving meals earlier next time; avoid making late meals a habit.",
-        ("19-40","0-2","15-30"): "Make it a light snack only; avoid alcohol/spicy/fat; dim lights.",
-        ("19-40","0-2","30-45"): "Avoid food within 2 h; calm-down routine; cool room.",
-        ("19-40","0-2","45+"): "Strict no-food window; CBT-I basics; if persistent, consider professional sleep evaluation.",
+        ("19-40", "0-2", "0-15"): "Try moving meals earlier next time; avoid making late meals a habit.",
+        ("19-40", "0-2", "15-30"): "Make it a light snack only; avoid alcohol/spicy/fat; dim lights.",
+        ("19-40", "0-2", "30-45"): "Avoid food within 2 h; calm-down routine; cool room.",
+        ("19-40", "0-2",
+         "45+"): "Strict no-food window; CBT-I basics; if persistent, consider professional sleep evaluation.",
 
         # -------- 41-60 --------
-        ("41-60","6-4","0-15"): "Maintain routine; watch caffeine sensitivity; keep consistent wake time.",
-        ("41-60","6-4","15-30"): "Reduce evening stimulants; dim lights; moderate dinner size.",
-        ("41-60","6-4","30-45"): "Earlier dinner; cool bedroom; 10 min relaxation/breathing.",
-        ("41-60","6-4","45+"): "CBT-I basics; remove late caffeine/alcohol; check pain/stress contributors.",
+        ("41-60", "6-4", "0-15"): "Maintain routine; watch caffeine sensitivity; keep consistent wake time.",
+        ("41-60", "6-4", "15-30"): "Reduce evening stimulants; dim lights; moderate dinner size.",
+        ("41-60", "6-4", "30-45"): "Earlier dinner; cool bedroom; 10 min relaxation/breathing.",
+        ("41-60", "6-4", "45+"): "CBT-I basics; remove late caffeine/alcohol; check pain/stress contributors.",
 
-        ("41-60","4-2","0-15"): "No change; keep dinner moderate; avoid late caffeine.",
-        ("41-60","4-2","15-30"): "Smaller dinner; avoid alcohol; reduce screens.",
-        ("41-60","4-2","30-45"): "Shift dinner earlier; avoid heavy fat/sugar; cooling + wind-down.",
-        ("41-60","4-2","45+"): "Meal cutoff ≥2 h; CBT-I basics; consistent wake time; morning light.",
+        ("41-60", "4-2", "0-15"): "No change; keep dinner moderate; avoid late caffeine.",
+        ("41-60", "4-2", "15-30"): "Smaller dinner; avoid alcohol; reduce screens.",
+        ("41-60", "4-2", "30-45"): "Shift dinner earlier; avoid heavy fat/sugar; cooling + wind-down.",
+        ("41-60", "4-2", "45+"): "Meal cutoff ≥2 h; CBT-I basics; consistent wake time; morning light.",
 
-        ("41-60","0-2","0-15"): "Not ideal long-term; aim for ≥2 h gap; keep portion small.",
-        ("41-60","0-2","15-30"): "Light snack only; avoid spicy/fat; dim lights now.",
-        ("41-60","0-2","30-45"): "Avoid food within 2 h; cool room; relaxation routine.",
-        ("41-60","0-2","45+"): "Strict no-food within 2 h; CBT-I basics; consider evaluation if persistent.",
+        ("41-60", "0-2", "0-15"): "Not ideal long-term; aim for ≥2 h gap; keep portion small.",
+        ("41-60", "0-2", "15-30"): "Light snack only; avoid spicy/fat; dim lights now.",
+        ("41-60", "0-2", "30-45"): "Avoid food within 2 h; cool room; relaxation routine.",
+        ("41-60", "0-2", "45+"): "Strict no-food within 2 h; CBT-I basics; consider evaluation if persistent.",
 
         # -------- 60+ --------
-        ("60+","6-4","0-15"): "Maintain routine; avoid long late naps; get morning light.",
-        ("60+","6-4","15-30"): "Increase daytime activity; morning light; reduce evening naps.",
-        ("60+","6-4","30-45"): "Limit naps (short + early); keep dinner early; cool room.",
-        ("60+","6-4","45+"): "CBT-I basics; review naps/med timing; consistent wake + morning light.",
+        ("60+", "6-4", "0-15"): "Maintain routine; avoid long late naps; get morning light.",
+        ("60+", "6-4", "15-30"): "Increase daytime activity; morning light; reduce evening naps.",
+        ("60+", "6-4", "30-45"): "Limit naps (short + early); keep dinner early; cool room.",
+        ("60+", "6-4", "45+"): "CBT-I basics; review naps/med timing; consistent wake + morning light.",
 
-        ("60+","4-2","0-15"): "No change; keep dinner moderate; avoid long naps late day.",
-        ("60+","4-2","15-30"): "Reduce dinner size; avoid alcohol; dim lights.",
-        ("60+","4-2","30-45"): "Shift meals earlier; reduce naps; cooling strategies.",
-        ("60+","4-2","45+"): "Meal cutoff ≥2 h; CBT-I basics; consider discussing meds/sleep with clinician if chronic.",
+        ("60+", "4-2", "0-15"): "No change; keep dinner moderate; avoid long naps late day.",
+        ("60+", "4-2", "15-30"): "Reduce dinner size; avoid alcohol; dim lights.",
+        ("60+", "4-2", "30-45"): "Shift meals earlier; reduce naps; cooling strategies.",
+        ("60+", "4-2",
+         "45+"): "Meal cutoff ≥2 h; CBT-I basics; consider discussing meds/sleep with clinician if chronic.",
 
-        ("60+","0-2","0-15"): "Try moving food earlier; late meals can worsen reflux/sleep.",
-        ("60+","0-2","15-30"): "Very small snack only; avoid fat/spice; elevate head if reflux.",
-        ("60+","0-2","30-45"): "Avoid food within 2 h; reduce naps; cool room.",
-        ("60+","0-2","45+"): "Strict no-food within 2 h; CBT-I basics; medical review if persistent (esp. reflux/pain).",
+        ("60+", "0-2", "0-15"): "Try moving food earlier; late meals can worsen reflux/sleep.",
+        ("60+", "0-2", "15-30"): "Very small snack only; avoid fat/spice; elevate head if reflux.",
+        ("60+", "0-2", "30-45"): "Avoid food within 2 h; reduce naps; cool room.",
+        ("60+", "0-2",
+         "45+"): "Strict no-food within 2 h; CBT-I basics; medical review if persistent (esp. reflux/pain).",
     }
 
-    return rec.get((ag, mt, sb), "Keep a consistent wake time, reduce evening light/screens, and avoid heavy meals close to bedtime.")
+    return rec.get((ag, mt, sb),
+                   "Keep a consistent wake time, reduce evening light/screens, and avoid heavy meals close to bedtime.")
 
 
 # Graph User Interface(GUi) application setup
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("Noctura-1.3 Food Sleep Latency Prediction System")
-
+        root.title("Noctura-1.4 Food Sleep Latency Prediction System")
 
         # ---- runtime values (must exist before _ui_tick / loops) ----
         self.hr_value = None
@@ -775,7 +864,7 @@ class App:
         self.camera_running = False
         self.last_frame = None
 
-        #Autoinputs
+        # Autoinputs
         self.age_var = tk.StringVar(value="15")
         self.gender_var = tk.StringVar(value="male")
         self.stress_var = tk.StringVar(value="5")
@@ -804,7 +893,6 @@ class App:
         self._row_entry(left, 7, "Manual HR (30-220 bpm)", self.hr_manual_var)
         self._row_entry(left, 8, "Manual Temp (30-45 °C)", self.temp_manual_var)
         self._row_entry(left, 9, "Sleep pressure (0-10)", self.sleep_pressure_var)
-
 
         # Arduino Connection
         tk.Label(left, text="Arduino connection setup ").grid(row=11, column=0, columnspan=2, sticky="w", pady=(8, 0))
@@ -854,8 +942,10 @@ class App:
 
         # Camera setup
         tk.Label(left, text="Camera").grid(row=20, column=0, columnspan=2, sticky="w", pady=(10, 0))
-        tk.Button(left, text="Open the Camera", command=self.start_camera).grid(row=21, column=0, sticky="ew", pady=(6, 0))
-        tk.Button(left, text="Close the Camera", command=self.stop_camera).grid(row=21, column=1, sticky="ew", pady=(6, 0))
+        tk.Button(left, text="Open the Camera", command=self.start_camera).grid(row=21, column=0, sticky="ew",
+                                                                                pady=(6, 0))
+        tk.Button(left, text="Close the Camera", command=self.stop_camera).grid(row=21, column=1, sticky="ew",
+                                                                                pady=(6, 0))
         tk.Button(left, text="Capture & Classify", command=self.capture_and_classify).grid(
             row=22, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
@@ -1071,8 +1161,8 @@ class App:
         else:
             temp = float(self.temp_value)
 
-        return age, gender, stress, float(hr), float(temp), float(grams), float(hours), float(screen), float(sp), float(wkg)
-
+        return age, gender, stress, float(hr), float(temp), float(grams), float(hours), float(screen), float(sp), float(
+            wkg)
 
     # Arduino section
     def connect_arduino(self):
@@ -1127,7 +1217,6 @@ class App:
                                 except:
                                     pass
                             continue
-
 
                         #     # Get HR
                         # if "Avg=" in line:
@@ -1205,6 +1294,7 @@ class App:
             self.ser = None
             messagebox.showerror("Arduino Error", f"Could not open {port}\n\n{str(e)}")
             return
+
     # Disconnect the Arduino
     def disconnect_arduino(self):
         self.serial_stop.set()
@@ -1219,89 +1309,95 @@ class App:
         self.log("[ARDUINO] Disconnected\n")
 
     def _serial_loop(self):
-            import statistics
-            while not self.serial_stop.is_set():
-                # Initialize empty lists for this 10-second collection window
-                hr_values = []
-                temp_values = []
-                
-                start_time = time.time()
-                # 1. COLLECTION PHASE (Run for 10 seconds)
-                while time.time() - start_time < 10:
-                    if self.serial_stop.is_set(): break
-                    
-                    if self.ser and self.ser.is_open:
-                        try:
-                            line = self.ser.readline().decode(errors='ignore').strip()
-                            if not line: continue
+        import statistics
+        while not self.serial_stop.is_set():
+            # Initialize empty lists for this 10-second collection window
+            hr_values = []
+            temp_values = []
 
-                            hr_found = None
-                            temp_found = None
-
-                            # --- ROBUST PARSING ---
-                            # A. Try CSV Parsing (BPM,Temp)
-                            if "," in line and "Finger=" not in line:
-                                parts = line.split(",")
-                                if len(parts) >= 2:
-                                    try:
-                                        hr_found = float(parts[0])
-                                        temp_found = float(parts[1])
-                                    except ValueError: pass
-
-                            # B. Try Fallback Parsing (Debug String)
-                            if hr_found is None or temp_found is None:
-                                if "Avg=" in line:
-                                    avg_idx = line.find("Avg=")
-                                    try: hr_found = float(line[avg_idx+4:].split(' ')[0])
-                                    except: pass
-                                if "To=" in line:
-                                    to_idx = line.find("To=")
-                                    try: temp_found = float(line[to_idx+3:].split(' ')[0])
-                                    except: pass
-
-                            # Store valid data into lists for statistical analysis
-                            if hr_found is not None and 30 <= hr_found <= 220:
-                                hr_values.append(hr_found)
-                                # Update immediate GUI preview
-                                self.hr_manual_var.set(f"{hr_found:.1f}")
-                            
-                            if temp_found is not None and 30 <= temp_found <= 45:
-                                temp_values.append(temp_found)
-                                # Update immediate GUI preview
-                                self.temp_manual_var.set(f"{temp_found:.1f}")
-
-                        except Exception as e:
-                            print(f"Serial Read Error: {e}")
-                    
-                    time.sleep(0.1) # Small sleep to prevent CPU spiking
-
-                # 2. CALCULATION PHASE (After 10 seconds of data gathering)
+            start_time = time.time()
+            # 1. COLLECTION PHASE (Run for 10 seconds)
+            while time.time() - start_time < 10:
                 if self.serial_stop.is_set(): break
 
-                print(f"[SENSOR] Collection complete. Got {len(hr_values)} HR samples, {len(temp_values)} temp samples")
+                if self.ser and self.ser.is_open:
+                    try:
+                        line = self.ser.readline().decode(errors='ignore').strip()
+                        if not line: continue
 
-                if len(hr_values) >= 15:
-                    hr_avg = statistics.mean(hr_values)
-                    hr_std = statistics.stdev(hr_values) if len(hr_values) > 1 else 0
-                    
-                    # If data is shaky, use median; otherwise use mean
-                    final_hr = statistics.median(hr_values) if hr_std > 10 else hr_avg
-                    
-                    self.hr_manual_var.set(f"{final_hr:.0f}")
-                    self.hr_value = final_hr
-                    self.log(f"[SENSOR] HR Finalized: {final_hr:.0f}bpm")
+                        hr_found = None
+                        temp_found = None
 
-                    if len(temp_values) >= 8:
-                        final_temp = statistics.median(temp_values)
-                        self.temp_manual_var.set(f"{final_temp:.1f}")
-                        self.temp_value = final_temp
-                        self.log(f"[SENSOR] Temp Finalized: {final_temp:.1f}°C")
+                        # --- ROBUST PARSING ---
+                        # A. Try CSV Parsing (BPM,Temp)
+                        if "," in line and "Finger=" not in line:
+                            parts = line.split(",")
+                            if len(parts) >= 2:
+                                try:
+                                    hr_found = float(parts[0])
+                                    temp_found = float(parts[1])
+                                except ValueError:
+                                    pass
 
-                # 3. COOLDOWN PHASE (Wait 30 seconds)
-                print("[SENSOR] Waiting 30s for next reading...")
-                for _ in range(30):
-                    if self.serial_stop.is_set(): break
-                    time.sleep(1)
+                        # B. Try Fallback Parsing (Debug String)
+                        if hr_found is None or temp_found is None:
+                            if "Avg=" in line:
+                                avg_idx = line.find("Avg=")
+                                try:
+                                    hr_found = float(line[avg_idx + 4:].split(' ')[0])
+                                except:
+                                    pass
+                            if "To=" in line:
+                                to_idx = line.find("To=")
+                                try:
+                                    temp_found = float(line[to_idx + 3:].split(' ')[0])
+                                except:
+                                    pass
+
+                        # Store valid data into lists for statistical analysis
+                        if hr_found is not None and 30 <= hr_found <= 220:
+                            hr_values.append(hr_found)
+                            # Update immediate GUI preview
+                            self.hr_manual_var.set(f"{hr_found:.1f}")
+
+                        if temp_found is not None and 30 <= temp_found <= 45:
+                            temp_values.append(temp_found)
+                            # Update immediate GUI preview
+                            self.temp_manual_var.set(f"{temp_found:.1f}")
+
+                    except Exception as e:
+                        print(f"Serial Read Error: {e}")
+
+                time.sleep(0.1)  # Small sleep to prevent CPU spiking
+
+            # 2. CALCULATION PHASE (After 10 seconds of data gathering)
+            if self.serial_stop.is_set(): break
+
+            print(f"[SENSOR] Collection complete. Got {len(hr_values)} HR samples, {len(temp_values)} temp samples")
+
+            if len(hr_values) >= 15:
+                hr_avg = statistics.mean(hr_values)
+                hr_std = statistics.stdev(hr_values) if len(hr_values) > 1 else 0
+
+                # If data is shaky, use median; otherwise use mean
+                final_hr = statistics.median(hr_values) if hr_std > 10 else hr_avg
+
+                self.hr_manual_var.set(f"{final_hr:.0f}")
+                self.hr_value = final_hr
+                self.log(f"[SENSOR] HR Finalized: {final_hr:.0f}bpm")
+
+                if len(temp_values) >= 8:
+                    final_temp = statistics.median(temp_values)
+                    self.temp_manual_var.set(f"{final_temp:.1f}")
+                    self.temp_value = final_temp
+                    self.log(f"[SENSOR] Temp Finalized: {final_temp:.1f}°C")
+
+            # 3. COOLDOWN PHASE (Wait 30 seconds)
+            print("[SENSOR] Waiting 30s for next reading...")
+            for _ in range(30):
+                if self.serial_stop.is_set(): break
+                time.sleep(1)
+
     # Camera Section
     def start_camera(self):
         if self.camera_running:
@@ -1394,7 +1490,8 @@ class App:
         win.title("Extra Food (Last 6 Hours)")
         win.grab_set()
 
-        tk.Label(win, text="Extra food in the last 6 hours:").grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(10, 4))
+        tk.Label(win, text="Extra food in the last 6 hours:").grid(row=0, column=0, columnspan=2, sticky="w", padx=10,
+                                                                   pady=(10, 4))
 
         # Food 2 Category
         tk.Label(win, text="Food 2 Category:").grid(row=1, column=0, sticky="w", padx=10, pady=4)
@@ -1441,6 +1538,7 @@ class App:
         # disable hours2 if same time
         def refresh_hours2():
             ent2.config(state="disabled" if same_time_var.get() == 1 else "normal")
+
         refresh_hours2()
         same_time_var.trace_add("write", lambda *_: refresh_hours2())
 
@@ -1460,7 +1558,8 @@ class App:
                     messagebox.showwarning("Invalid", "Hours since Food2 must be 0-6.")
                     return
 
-            result["val"] = dict(food2=food2_var.get(), grams2=float(grams2), same_time=bool(same_time_var.get()), hours2=hours2)
+            result["val"] = dict(food2=food2_var.get(), grams2=float(grams2), same_time=bool(same_time_var.get()),
+                                 hours2=hours2)
             win.destroy()
 
         def cancel():
@@ -1498,14 +1597,13 @@ class App:
 
         food1 = normalize_food(self.food_var.get())
 
-
         self.log(f"1.HR={hr:.1f} bpm  "
                  f"2.Temp={temp:.2f} °C "
                  f"3.Age={age} years old")
-        self.log( f"4.Gender={gender} "
+        self.log(f"4.Gender={gender} "
                  f"5.Stress Level={stress}"
                  f"6. Screen time before sleep ={screen} hours")
-        self.log(f"Food1={food1.replace('_',' ')} | Portion={grams1:.0f}g | Hour since the meal={h1:.1f}h ago")
+        self.log(f"Food1={food1.replace('_', ' ')} | Portion={grams1:.0f}g | Hour since the meal={h1:.1f}h ago")
 
         extra = messagebox.askyesno("Extra Food", "Did you eat anything else in the last 6 hours?")
         if not extra:
@@ -1528,13 +1626,12 @@ class App:
             self.log("[MACROS 1] " + format_macros(info))
             self._print_result(delay, age, h1)
 
-
         food2 = normalize_food(ex["food2"])
         grams2 = ex["grams2"]
         h2 = h1 if ex["same_time"] else float(ex["hours2"])
 
-        self.log(f"Food2={food2.replace('_',' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
-        delay, infos = calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen)
+        self.log(f"Food2={food2.replace('_', ' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
+        delay, infos = calc_sld_two(food1, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen, sp, wkg)
         if delay is None:
             self.log("[RESULT] Missing nutrition data.\n")
             return
@@ -1543,7 +1640,6 @@ class App:
         self.log("[MACROS 1] " + format_macros(info1))
         self.log("[MACROS 2] " + format_macros(info2))
         self._print_result(delay, age, h1)
-
 
     # Camera
     def capture_and_classify(self):
@@ -1556,26 +1652,27 @@ class App:
         prof = self._get_profile()
         if prof is None:
             return
-        age, gender, stress, hr, temp, grams1, h1, screen = prof
+        age, gender, stress, hr, temp, grams1, h1, screen, sp, wkg = prof
 
-        self.log("\n Physiological DatA")
-        self.log(f"Hear Rate={hr:.1f} bpm, Body temperature={temp:.2f} °C, Age={age}, Gender={gender}, Stress Level ={stress}")
+        self.log("\n Physiological Data")
+        self.log(
+            f"Hear Rate={hr:.1f} bpm, Body temperature={temp:.2f} °C, Age={age}, Gender={gender}, Stress Level ={stress}")
 
         preds, _ = classify_frame_bgr(self.last_frame, topk=3)
         self.log("Top Matches :")
         for i, (name, prob) in enumerate(preds, 1):
-            self.log(f"  {i}. {name.replace('_',' ')} ({prob*100:.1f}%)")
+            self.log(f"  {i}. {name.replace('_', ' ')} ({prob * 100:.1f}%)")
 
         choice = self._ask_choice_gui(preds)
         if choice is None:
             self.log("[CAPTURE] Cancelled.\n")
             return
         picked = preds[choice][0]
-        self.log(f"Picked: {picked.replace('_',' ')} | Portion={grams1:.0f}g | {h1:.1f}h ago")
+        self.log(f"Picked: {picked.replace('_', ' ')} | Portion={grams1:.0f}g | {h1:.1f}h ago")
 
         extra = messagebox.askyesno("Extra Food", "Did you eat anything else in the last 6 hours?")
         if not extra:
-            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen)
+            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen, sp, wkg)
             if delay is None:
                 self.log("[RESULT] Missing nutrition data.\n")
                 return
@@ -1586,7 +1683,7 @@ class App:
         ex = self._ask_extra_food_popup()
         if ex is None:
             self.log("[CAPTURE] Extra food cancelled -> using main only.\n")
-            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen)
+            delay, info, _dbg = calc_sld_one(picked, hr, temp, age, gender, stress, grams1, h1, screen, sp, wkg)
             if delay is None:
                 self.log("[RESULT] Missing nutrition data.\n")
                 return
@@ -1598,8 +1695,8 @@ class App:
         grams2 = ex["grams2"]
         h2 = h1 if ex["same_time"] else float(ex["hours2"])
 
-        self.log(f"Food2={food2.replace('_',' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
-        delay, infos = calc_sld_two(picked, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen)
+        self.log(f"Food2={food2.replace('_', ' ')} | Portion2={grams2:.0f}g | {h2:.1f}h ago")
+        delay, infos = calc_sld_two(picked, grams1, h1, food2, grams2, h2, hr, temp, age, gender, stress, screen, sp, wkg)
         if delay is None:
             self.log("[RESULT] Missing nutrition data.\n")
             return
@@ -1609,16 +1706,18 @@ class App:
         self.log("[MACROS 2] " + format_macros(info2))
         self._print_result(delay, age, h1)
 
-    #Close the GUI
+    # Close the GUI
     def on_close(self):
         self.stop_camera()
         self.disconnect_arduino()
         self.root.destroy()
 
+
 def run():
     root = tk.Tk()
     App(root)
     root.mainloop()
+
 
 if __name__ == "__main__":
     run()
